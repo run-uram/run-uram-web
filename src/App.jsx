@@ -1,116 +1,216 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { LoginPage } from './components/LoginPage.jsx';
 import { Header } from './components/Header.jsx';
 import { MapContainer } from './components/MapContainer.jsx';
 import { HexagonDetailModal } from './components/HexagonDetailModal.jsx';
-import { LeaderboardPanel } from './components/LeaderboardPanel.jsx';
-import { RunSimulator } from './components/RunSimulator.jsx';
+import { UserProfileModal } from './components/UserProfileModal.jsx';
 import { LiveTicker } from './components/LiveTicker.jsx';
-import { ApiExplorerModal } from './components/ApiExplorerModal.jsx';
 
-import { getHexagonsInArea } from './services/api.js';
 import { KAZAN_CENTER, KAZAN_LANDMARKS, INITIAL_TICKER_EVENTS } from './services/mockData.js';
-import { getKRingHexes, getH3Index, updateHexOwner } from './services/h3Utils.js';
+import { isAuthenticated, getStoredUser, clearSession } from './services/authService.js';
+import wsService from './services/wsService.js';
+import { h3Uint64ToHexString } from './services/protoService.js';
 
 export function App() {
+  const [authenticated, setAuthenticated] = useState(isAuthenticated());
+  const [userProfile, setUserProfile] = useState(null);
+  const [wsStatus, setWsStatus] = useState(wsService.status);
+
+  // Map state
   const [selectedLandmark, setSelectedLandmark] = useState(KAZAN_LANDMARKS[0]);
   const [h3Resolution, setH3Resolution] = useState(9);
+  const [mapStyle, setMapStyle] = useState('voyager');
   const [centerPosition, setCenterPosition] = useState(KAZAN_CENTER);
 
+  // Protobuf data
   const [hexagons, setHexagons] = useState([]);
   const [selectedH3Index, setSelectedH3Index] = useState(null);
+  const [hexagonDetails, setHexagonDetails] = useState(null);
 
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [showSimulator, setShowSimulator] = useState(false);
-  const [showApiExplorer, setShowApiExplorer] = useState(false);
-
+  // Modals
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const [tickerEvents, setTickerEvents] = useState(INITIAL_TICKER_EVENTS);
 
-  // Stats calculation
-  const capturedHexesCount = hexagons.filter((h) => h.is_captured).length;
-
-  // Dynamic API Fetcher for current map center / viewport coordinates
-  const fetchAreaHexagons = useCallback((lat, lng, res = h3Resolution) => {
-    getHexagonsInArea({
-      lat,
-      lng,
-      radius: 4, // Radius 4 gives ~61 hexes total, exactly ~18-20 hexes across the viewport diameter
-      resolution: res
-    }).then((data) => {
-      setHexagons(data.hexagons || []);
-    });
+  // Resolution Ref
+  const h3ResolutionRef = useRef(h3Resolution);
+  useEffect(() => {
+    h3ResolutionRef.current = h3Resolution;
   }, [h3Resolution]);
 
-  // Initial load & resolution change
+  // WebSocket listeners and lifecycle
   useEffect(() => {
-    fetchAreaHexagons(centerPosition.lat, centerPosition.lng, h3Resolution);
-  }, [centerPosition.lat, centerPosition.lng, h3Resolution, fetchAreaHexagons]);
+    if (!authenticated) return;
 
-  // Handle Landmark Selection
+    // 1. Connection status
+    const unsubStatus = wsService.on('status', ({ status }) => {
+      setWsStatus(status);
+    });
+
+    // 2. UserProfile Protobuf response
+    const unsubProfile = wsService.on('user_profile_response', (profile) => {
+      if (profile) {
+        setUserProfile(profile);
+      }
+    });
+
+    // 3. Viewport Protobuf response (stream of hexagons in camera viewport)
+    const unsubViewport = wsService.on('subscribe_viewport_response', (resp) => {
+      if (resp && resp.hexagons) {
+        const mapped = resp.hexagons.map((hex) => {
+          const hexStr = h3Uint64ToHexString(hex.h3_index);
+          const isCaptured = Boolean(hex.owner_username || (hex.owner_user_id && hex.owner_user_id !== '0'));
+          return {
+            h3_index: hexStr,
+            is_captured: isCaptured,
+            score: hex.top_score || 0,
+            top_score: hex.top_score || 0,
+            owner: isCaptured ? {
+              id: hex.owner_user_id,
+              name: hex.owner_username || 'Атлет',
+              color: hex.owner_color_hex || '#f97316',
+              club_name: 'URAM Team'
+            } : null
+          };
+        });
+
+        setHexagons((prev) => {
+          const map = new Map(prev.map(h => [h.h3_index, h]));
+          mapped.forEach(h => map.set(h.h3_index, h));
+          return Array.from(map.values());
+        });
+      }
+    });
+
+    // 4. Hexagon Details Protobuf response
+    const unsubHexDetails = wsService.on('hexagon_details_response', (details) => {
+      if (details) {
+        setHexagonDetails(details);
+      }
+    });
+
+    // 5. Hexagon Capture Realtime Pub/Sub Event
+    const unsubCapture = wsService.on('hexagon_capture_event', (event) => {
+      const hexStr = h3Uint64ToHexString(event.h3_index);
+
+      // Update hex in memory
+      setHexagons((prev) =>
+        prev.map((h) => {
+          if (h.h3_index === hexStr) {
+            return {
+              ...h,
+              is_captured: true,
+              score: event.score_at_capture || 400,
+              top_score: event.score_at_capture || 400,
+              owner: {
+                id: event.new_owner_id,
+                name: event.new_owner_name || 'Бегун',
+                color: event.new_owner_color_hex || '#f97316',
+                club_name: 'URAM Club'
+              }
+            };
+          }
+          return h;
+        })
+      );
+
+      // Add to Live Ticker
+      const tickerItem = {
+        id: `cap-${Date.now()}-${hexStr}`,
+        user: event.new_owner_name || 'Бегун',
+        clubColor: event.new_owner_color_hex || '#f97316',
+        text: `Захватил гексагон #${hexStr.substring(0, 7)}...`,
+        time: 'Только что (WS)',
+        score: `+${event.score_at_capture || 400}`
+      };
+      setTickerEvents((prev) => [tickerItem, ...prev.slice(0, 2)]);
+    });
+
+    // Connect WebSocket
+    wsService.connect();
+
+    return () => {
+      unsubStatus();
+      unsubProfile();
+      unsubViewport();
+      unsubHexDetails();
+      unsubCapture();
+    };
+  }, [authenticated]);
+
+  // Handle Viewport changes from MapLibre camera move
+  const handleViewportChange = useCallback(({ bounds }) => {
+    if (bounds && wsService.status === 'connected') {
+      wsService.subscribeViewport(bounds.swLng, bounds.swLat, bounds.neLng, bounds.neLat);
+    }
+  }, []);
+
+  // Handle Hexagon Selection
+  const handleHexagonSelect = (h3Index) => {
+    setSelectedH3Index(h3Index);
+    setHexagonDetails(null);
+    if (wsService.status === 'connected') {
+      wsService.requestHexagonDetails(h3Index);
+    }
+  };
+
+  // Handle Landmark Navigation
   const handleSelectLandmark = (landmark) => {
     setSelectedLandmark(landmark);
-    const newPos = {
+    setCenterPosition({
       lat: landmark.lat,
       lng: landmark.lng,
       zoom: landmark.zoom
-    };
-    setCenterPosition(newPos);
-    fetchAreaHexagons(landmark.lat, landmark.lng, h3Resolution);
+    });
   };
 
-  // Handle Map Panning/Movement by user -> dynamically query API for new viewport hexes!
-  const handleViewportChange = useCallback(({ lat, lng }) => {
-    fetchAreaHexagons(lat, lng, h3Resolution);
-  }, [fetchAreaHexagons, h3Resolution]);
-
-  // Handle Hexagon Click
-  const handleHexagonSelect = (h3Index) => {
-    setSelectedH3Index(h3Index);
+  // Handle Login
+  const handleLoginSuccess = (authData) => {
+    setAuthenticated(true);
+    const user = getStoredUser();
+    setUserProfile((prev) => ({
+      ...prev,
+      username: user?.username || authData.user?.username || 'Бегун'
+    }));
   };
 
-  // Handle Run Simulation Hex Capture
-  const handleSimulateCapture = (runner, routePreset) => {
-    const centerH3 = getH3Index(centerPosition.lat, centerPosition.lng, h3Resolution);
-    const ring = getKRingHexes(centerH3, 3);
-    const randomHexIndex = ring[Math.floor(Math.random() * ring.length)];
-
-    const updated = updateHexOwner(randomHexIndex, runner, 400);
-
-    setHexagons((prev) =>
-      prev.map((h) => (h.h3_index === randomHexIndex ? updated : h))
-    );
-
-    const newEvent = {
-      id: `evt-${Date.now()}`,
-      user: runner.name,
-      clubColor: runner.club.color,
-      text: `Захвачен сектор при забеге (${routePreset === 'uram' ? 'УРАМ' : 'Кремль'})`,
-      time: 'Только что',
-      score: '+400'
-    };
-
-    setTickerEvents((prev) => [newEvent, ...prev.slice(0, 2)]);
-    setSelectedH3Index(randomHexIndex);
+  // Handle Logout
+  const handleLogout = () => {
+    clearSession();
+    wsService.disconnect();
+    setAuthenticated(false);
+    setUserProfile(null);
+    setHexagons([]);
+    setSelectedH3Index(null);
   };
+
+  // If not logged in, display full LoginPage first
+  if (!authenticated) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  const capturedCount = hexagons.filter((h) => h.is_captured).length;
 
   return (
     <div className="relative flex flex-col h-screen w-screen overflow-hidden bg-zinc-950">
-      {/* Navigation Header */}
+      {/* Top Header */}
       <Header
         selectedLandmark={selectedLandmark}
         onSelectLandmark={handleSelectLandmark}
         h3Resolution={h3Resolution}
-        onChangeResolution={(res) => setH3Resolution(res)}
-        onToggleLeaderboard={() => setShowLeaderboard((prev) => !prev)}
-        onToggleSimulator={() => setShowSimulator((prev) => !prev)}
-        onToggleApiExplorer={() => setShowApiExplorer(true)}
+        onChangeResolution={setH3Resolution}
+        currentMapStyle={mapStyle}
+        onSelectMapStyle={setMapStyle}
+        onOpenProfile={() => setShowProfileModal(true)}
+        onLogout={handleLogout}
+        userProfile={userProfile}
+        wsStatus={wsStatus}
         stats={{
           hexCount: hexagons.length,
-          capturedCount: capturedHexesCount,
-          activeRunners: 42
+          capturedCount: capturedCount
         }}
       />
 
-      {/* Map Area */}
+      {/* Main Map */}
       <div className="relative flex-1 w-full h-full overflow-hidden">
         <MapContainer
           hexagons={hexagons}
@@ -118,57 +218,35 @@ export function App() {
           onHexagonSelect={handleHexagonSelect}
           centerPosition={centerPosition}
           h3Resolution={h3Resolution}
+          mapStyle={mapStyle}
           onViewportChange={handleViewportChange}
         />
 
-        {/* Selected Hexagon Detail Drawer (GET /api/v1/hexagons/{h3_index}) */}
+        {/* Selected Hexagon Protobuf Detail Drawer */}
         {selectedH3Index && (
           <HexagonDetailModal
             h3Index={selectedH3Index}
-            onClose={() => setSelectedH3Index(null)}
-            onCaptureHexagon={(h3Idx) => {
-              const defaultRunner = {
-                id: 999,
-                name: 'Атлет (Текущий игрок)',
-                handle: '@current_runner',
-                avatar: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100" height="100" fill="%2318181b"/><circle cx="50" cy="38" r="18" fill="%2371717a"/><path d="M20 85 C20 62 34 52 50 52 C66 52 80 62 80 85 Z" fill="%2371717a"/></svg>`,
-                club: { name: 'Incomsystem', badge: '⚡', color: '#f97316' },
-                avgPace: '4:10 мин/км'
-              };
-              const updated = updateHexOwner(h3Idx, defaultRunner, 500);
-              setHexagons((prev) => prev.map((h) => (h.h3_index === h3Idx ? updated : h)));
-              setSelectedH3Index(h3Idx);
+            onClose={() => {
+              setSelectedH3Index(null);
+              setHexagonDetails(null);
             }}
+            detailsData={hexagonDetails}
           />
         )}
 
-        {/* Leaderboard Panel (GET /api/v1/leaderboard) */}
-        {showLeaderboard && (
-          <LeaderboardPanel
-            onClose={() => setShowLeaderboard(false)}
-            onSelectRunnerHexes={() => {}}
-          />
-        )}
-
-        {/* Run Simulator */}
-        {showSimulator && (
-          <RunSimulator
-            onClose={() => setShowSimulator(false)}
-            onSimulateCapture={handleSimulateCapture}
-          />
-        )}
-
-        {/* Live Event Ticker */}
+        {/* Realtime Live Ticker */}
         <LiveTicker events={tickerEvents} />
       </div>
 
-      {/* API Explorer Modal */}
-      {showApiExplorer && (
-        <ApiExplorerModal
-          currentH3Index={selectedH3Index}
-          onClose={() => setShowApiExplorer(false)}
-        />
-      )}
+      {/* User Profile Modal */}
+      <UserProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        profileData={userProfile}
+        onLogout={handleLogout}
+      />
     </div>
   );
 }
+
+export default App;

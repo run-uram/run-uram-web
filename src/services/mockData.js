@@ -12,6 +12,12 @@ export const KAZAN_BOUNDS = [
   [49.40, 55.98]  // NE: Derbyshki / M7 North-East
 ];
 
+export const MAP_STYLES = {
+  voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
+  dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'
+};
+
 // SVG Data URL for Generic Athlete Avatar
 const GENERIC_AVATAR = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" fill="%2327272a"><rect width="100" height="100" fill="%2318181b"/><circle cx="50" cy="38" r="18" fill="%2371717a"/><path d="M20 85 C20 62 34 52 50 52 C66 52 80 62 80 85 Z" fill="%2371717a"/></svg>`;
 

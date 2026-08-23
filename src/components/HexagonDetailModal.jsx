@@ -1,155 +1,127 @@
-import React, { useEffect, useState } from 'react';
-import { X, Shield, History, Zap, Share2, ArrowRight } from 'lucide-react';
-import { getHexagonByH3Index } from '../services/api.js';
+import React from 'react';
+import { X, Shield, History, Zap, Trophy, Users, MapPin, Footprints } from 'lucide-react';
+import wsService from '../services/wsService.js';
 
 export function HexagonDetailModal({
   h3Index,
   onClose,
-  onCaptureHexagon
+  detailsData
 }) {
-  const [hexDetails, setHexDetails] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!h3Index) return;
-    setLoading(true);
-    getHexagonByH3Index(h3Index)
-      .then((data) => {
-        setHexDetails(data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error('Error fetching hex detail:', err);
-        setLoading(false);
-      });
-  }, [h3Index]);
-
   if (!h3Index) return null;
 
-  const owner = hexDetails?.owner;
-  const isCaptured = hexDetails?.is_captured;
+  const state = detailsData?.state || {};
+  const leaderboard = detailsData?.leaderboard || [];
+  const isCaptured = Boolean(state.owner_username || (state.owner_user_id && state.owner_user_id !== '0'));
 
   return (
-    <div className="absolute top-20 right-6 z-30 w-full max-w-sm panel-industrial rounded-2xl border border-zinc-800 shadow-2xl overflow-hidden animate-in slide-in-from-right-4 duration-200">
-      {/* Drawer Header */}
-      <div className="p-3.5 bg-zinc-900/90 border-b border-zinc-800 flex items-center justify-between">
+    <div className="absolute top-20 right-6 z-30 w-full max-w-sm panel-industrial rounded-3xl border border-zinc-800/90 bg-zinc-900/95 backdrop-blur-xl shadow-2xl overflow-hidden text-zinc-100 animate-in slide-in-from-right-4 duration-200">
+      {/* Header */}
+      <div className="p-4 bg-zinc-950/60 border-b border-zinc-800/80 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-mono uppercase tracking-wider text-zinc-500 font-semibold">
-            H3 Cell
-          </span>
-          <span className="font-mono text-xs text-orange-400 font-bold bg-zinc-950 px-2 py-0.5 rounded border border-zinc-800">
-            {h3Index}
-          </span>
+          <div className="w-7 h-7 rounded-xl bg-orange-500/20 text-orange-400 flex items-center justify-center border border-orange-500/30">
+            <MapPin className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">H3 Hexagon</div>
+            <div className="font-mono text-xs text-orange-400 font-bold tracking-tight">
+              {h3Index}
+            </div>
+          </div>
         </div>
         <button
           onClick={onClose}
-          className="p-1 rounded-lg hover:bg-zinc-800 text-zinc-500 hover:text-zinc-200 transition-colors"
+          className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition"
         >
           <X className="w-4 h-4" />
         </button>
       </div>
 
-      {loading ? (
-        <div className="p-8 text-center space-y-2">
-          <div className="w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-xs text-zinc-500 font-mono">Fetching cell telemetry...</p>
-        </div>
-      ) : (
-        <div className="p-4 space-y-4 max-h-[calc(80vh-80px)] overflow-y-auto">
-          {/* Owner Profile Card */}
-          {isCaptured && owner ? (
-            <div className="p-3.5 rounded-xl bg-zinc-900/80 border border-zinc-800 space-y-3">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2.5">
-                  <img
-                    src={owner.avatar}
-                    alt={owner.name}
-                    className="w-11 h-11 rounded-lg object-cover border border-zinc-700"
-                  />
-                  <div>
-                    <div className="font-heading font-semibold text-zinc-100 text-sm leading-snug">
-                      {owner.name}
-                    </div>
-                    <div className="text-xs font-mono text-zinc-400 flex items-center gap-1.5 mt-0.5">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: owner.color }}></span>
-                      <span>{owner.club_name}</span>
-                    </div>
-                  </div>
+      <div className="p-4 space-y-4 max-h-[calc(80vh-80px)] overflow-y-auto">
+        {/* Owner Card */}
+        {isCaptured ? (
+          <div className="p-4 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div 
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-black text-lg uppercase shadow-md"
+                  style={{ backgroundColor: state.owner_color_hex || '#f97316' }}
+                >
+                  {state.owner_username ? state.owner_username[0] : 'R'}
                 </div>
-
-                <div className="text-right font-mono">
-                  <div className="text-[10px] text-zinc-500 uppercase">Очки</div>
-                  <div className="text-sm font-bold text-orange-400">{hexDetails.score} pts</div>
+                <div>
+                  <div className="text-xs text-zinc-400 font-mono">Текущий владелец</div>
+                  <div className="font-bold text-white text-sm">{state.owner_username || 'Атлет'}</div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-800/80 text-xs font-mono">
-                <div className="bg-zinc-950 p-2 rounded-lg border border-zinc-800/60">
-                  <span className="text-zinc-500 text-[10px] block">Темп</span>
-                  <span className="text-zinc-200 font-bold">{owner.avg_pace}</span>
-                </div>
-                <div className="bg-zinc-950 p-2 rounded-lg border border-zinc-800/60">
-                  <span className="text-zinc-500 text-[10px] block">Удержание</span>
-                  <span className="text-zinc-200 font-bold">34ч 12м</span>
+              <div className="text-right font-mono">
+                <div className="text-[10px] text-zinc-500 uppercase">Top Score</div>
+                <div className="text-sm font-black text-orange-400">
+                  {state.top_score || 0} <span className="text-[10px] text-zinc-500">pts</span>
                 </div>
               </div>
             </div>
-          ) : (
-            <div className="p-4 rounded-xl bg-zinc-900/60 border border-zinc-800 text-center space-y-1.5">
-              <div className="w-8 h-8 rounded-lg bg-zinc-800 text-zinc-400 flex items-center justify-center mx-auto">
-                <Shield className="w-4 h-4" />
-              </div>
-              <h4 className="font-heading font-semibold text-zinc-200 text-xs">Нейтральный сектор</h4>
-              <p className="text-[11px] text-zinc-500">
-                Сектор еще не захвачен. Пробегите через него, чтобы записать очки на свой счет.
-              </p>
+          </div>
+        ) : (
+          <div className="p-4 rounded-2xl bg-zinc-950/50 border border-zinc-800/80 text-center space-y-1.5">
+            <div className="w-9 h-9 rounded-xl bg-zinc-800/80 text-zinc-400 flex items-center justify-center mx-auto">
+              <Shield className="w-4 h-4" />
             </div>
-          )}
+            <h4 className="font-bold text-zinc-200 text-xs">Нейтральный сектор</h4>
+            <p className="text-[11px] text-zinc-400">
+              Сектор свободен для захвата через трекинг забега.
+            </p>
+          </div>
+        )}
 
-          {/* History Timeline */}
-          <div>
-            <div className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <History className="w-3.5 h-3.5 text-zinc-400" />
-              <span>История ячейки</span>
+        {/* Hexagon Leaderboard */}
+        {leaderboard && leaderboard.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 font-semibold">
+              <Trophy className="w-3.5 h-3.5 text-amber-400" />
+              <span>Топ бегунов в этом секторе</span>
             </div>
 
             <div className="space-y-1.5 font-mono text-xs">
-              {(hexDetails?.history || []).map((item, idx) => (
+              {leaderboard.map((entry, idx) => (
                 <div
-                  key={item.id || idx}
-                  className="p-2.5 rounded-lg bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-between"
+                  key={entry.user_id || idx}
+                  className="p-2.5 rounded-xl bg-zinc-950/60 border border-zinc-800/70 flex items-center justify-between hover:border-zinc-700 transition"
                 >
-                  <div>
-                    <div className="text-zinc-200 font-medium">{item.runner}</div>
-                    <div className="text-[10px] text-zinc-500">{item.action}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 text-[11px] text-zinc-500 font-bold">#{idx + 1}</span>
+                    <span 
+                      className="w-2.5 h-2.5 rounded-full" 
+                      style={{ backgroundColor: entry.player_color_hex || '#f97316' }} 
+                    />
+                    <div>
+                      <div className="text-zinc-200 font-semibold">{entry.username}</div>
+                      <div className="text-[10px] text-zinc-500 font-sans flex items-center gap-1">
+                        <Footprints className="w-2.5 h-2.5" />
+                        <span>{entry.visits_count || 1} визитов</span>
+                        {entry.total_distance_meters > 0 && (
+                          <span>• {(entry.total_distance_meters / 1000).toFixed(1)} км</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-[10px] text-zinc-500 block">{item.date}</span>
-                    <span className="text-emerald-400 font-bold text-[11px]">+{item.score}</span>
+                  <div className="text-right font-bold text-orange-400 text-xs">
+                    {entry.uram_points || 0} pts
                   </div>
                 </div>
               ))}
             </div>
           </div>
+        )}
 
-          {/* Actions */}
-          <div className="pt-1 flex items-center gap-2">
-            <button
-              onClick={() => onCaptureHexagon(h3Index)}
-              className="flex-1 py-2.5 px-3 rounded-xl font-heading font-semibold text-xs bg-orange-500 hover:bg-orange-400 text-zinc-950 transition-colors flex items-center justify-center gap-1.5 shadow-md shadow-orange-500/20"
-            >
-              <Zap className="w-3.5 h-3.5 fill-zinc-950" />
-              Захватить ячейку
-            </button>
-            <button
-              onClick={() => alert(`Ссылка на H3 ячейку ${h3Index} скопирована`)}
-              className="p-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-400 border border-zinc-800 transition-colors"
-            >
-              <Share2 className="w-4 h-4" />
-            </button>
-          </div>
+        {/* Protobuf Details Indicator */}
+        <div className="pt-2 text-[10px] font-mono text-zinc-500 flex items-center justify-between border-t border-zinc-800/80">
+          <span>Схема: gamemap.HexagonDetails</span>
+          <span className="text-emerald-400">● Realtime Sync</span>
         </div>
-      )}
+      </div>
     </div>
   );
 }
+
+export default HexagonDetailModal;

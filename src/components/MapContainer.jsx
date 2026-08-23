@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
-import { KAZAN_CENTER, KAZAN_BOUNDS } from '../services/mockData.js';
+import { KAZAN_CENTER, KAZAN_BOUNDS, MAP_STYLES } from '../services/mockData.js';
 import { h3ToPolygonCoordinates } from '../services/h3Utils.js';
 
 export function MapContainer({
@@ -9,6 +9,7 @@ export function MapContainer({
   onHexagonSelect,
   centerPosition,
   h3Resolution,
+  mapStyle = 'voyager',
   onViewportChange
 }) {
   const mapContainerRef = useRef(null);
@@ -16,36 +17,96 @@ export function MapContainer({
   const popupRef = useRef(null);
 
   const [mapLoaded, setMapLoaded] = useState(false);
+  const currentStyleRef = useRef(mapStyle);
 
-  // Initialize MapLibre GL Map locked to Kazan and constrained zoom
+  const onViewportChangeRef = useRef(onViewportChange);
+  const onHexagonSelectRef = useRef(onHexagonSelect);
+
   useEffect(() => {
-    if (!mapContainerRef.current || mapInstanceRef.current) return;
+    onViewportChangeRef.current = onViewportChange;
+  }, [onViewportChange]);
 
-    const map = new maplibregl.Map({
-      container: mapContainerRef.current,
-      style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
-      center: [KAZAN_CENTER.lng, KAZAN_CENTER.lat],
-      zoom: KAZAN_CENTER.zoom,
-      minZoom: 12.5,   // Constrain zoom so diameter is max ~20 hexes
-      maxZoom: 17.5,   // High precision zoom
-      maxBounds: KAZAN_BOUNDS,
-      pitch: 25,
-      bearing: 0,
-      attributionControl: false
-    });
+  useEffect(() => {
+    onHexagonSelectRef.current = onHexagonSelect;
+  }, [onHexagonSelect]);
 
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+  const emitViewportBounds = useCallback((map) => {
+    if (!map || !onViewportChangeRef.current) return;
+    try {
+      const center = map.getCenter();
+      const bounds = map.getBounds();
+      const sw = bounds.getSouthWest();
+      const ne = bounds.getNorthEast();
 
-    map.on('load', () => {
-      setMapLoaded(true);
+      onViewportChangeRef.current({
+        lat: center.lat,
+        lng: center.lng,
+        bounds: {
+          swLng: sw.lng,
+          swLat: sw.lat,
+          neLng: ne.lng,
+          neLat: ne.lat
+        }
+      });
+    } catch (e) {
+      console.warn('Error computing viewport bounds:', e);
+    }
+  }, []);
 
-      // Add Hexagon GeoJSON Source
+  const buildFeatures = useCallback(() => {
+    return hexagons
+      .map((hex) => {
+        const coords = h3ToPolygonCoordinates(hex.h3_index);
+        if (!coords) return null;
+
+        const isSelected = hex.h3_index === selectedH3Index;
+        const owner = hex.owner;
+        const isCaptured = Boolean(hex.is_captured || (owner && owner.name));
+
+        return {
+          type: 'Feature',
+          properties: {
+            h3Index: hex.h3_index,
+            isCaptured: isCaptured,
+            isSelected: isSelected,
+            color: owner?.color || hex.color || '#27272a',
+            ownerName: owner?.name || hex.owner_username || 'Свободный сектор',
+            ownerAvatar: owner?.avatar || '',
+            clubName: owner?.club_name || hex.team_tag || 'Running Club',
+            score: hex.score || hex.top_score || 0
+          },
+          geometry: {
+            type: 'Polygon',
+            coordinates: [coords]
+          }
+        };
+      })
+      .filter(Boolean);
+  }, [hexagons, selectedH3Index]);
+
+  const setupLayers = useCallback((map) => {
+    if (!map) return;
+
+    if (!map.getSource('h3-hexagons-source')) {
       map.addSource('h3-hexagons-source', {
         type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] }
+        data: {
+          type: 'FeatureCollection',
+          features: buildFeatures()
+        }
       });
+    }
 
-      // Layer 1: Hexagon Fill
+    const layers = map.getStyle().layers || [];
+    let firstLabelLayerId = undefined;
+    for (let i = 0; i < layers.length; i++) {
+      if (layers[i].type === 'symbol') {
+        firstLabelLayerId = layers[i].id;
+        break;
+      }
+    }
+
+    if (!map.getLayer('h3-hexagons-fill')) {
       map.addLayer({
         id: 'h3-hexagons-fill',
         type: 'fill',
@@ -54,14 +115,15 @@ export function MapContainer({
           'fill-color': ['get', 'color'],
           'fill-opacity': [
             'case',
-            ['boolean', ['get', 'isSelected'], false], 0.45,
-            ['boolean', ['get', 'isCaptured'], false], 0.22,
-            0.05
+            ['boolean', ['get', 'isSelected'], false], 0.60,
+            ['boolean', ['get', 'isCaptured'], false], 0.38,
+            0.08
           ]
         }
-      });
+      }, firstLabelLayerId);
+    }
 
-      // Layer 2: Hexagon Border
+    if (!map.getLayer('h3-hexagons-line')) {
       map.addLayer({
         id: 'h3-hexagons-line',
         type: 'line',
@@ -71,34 +133,65 @@ export function MapContainer({
             'case',
             ['boolean', ['get', 'isSelected'], false], '#ffffff',
             ['boolean', ['get', 'isCaptured'], false], ['get', 'color'],
-            'rgba(255, 255, 255, 0.12)'
+            'rgba(255, 255, 255, 0.15)'
           ],
           'line-width': [
             'case',
             ['boolean', ['get', 'isSelected'], false], 2.5,
-            ['boolean', ['get', 'isCaptured'], false], 1.2,
+            ['boolean', ['get', 'isCaptured'], false], 1.5,
             0.8
           ],
           'line-opacity': 0.85
         }
-      });
+      }, firstLabelLayerId);
+    }
+  }, [buildFeatures]);
 
-      // Hover Popup
+  // Initialize MapLibre GL Map
+  useEffect(() => {
+    if (!mapContainerRef.current || mapInstanceRef.current) return;
+
+    const initialStyle = MAP_STYLES[mapStyle] || MAP_STYLES.voyager;
+
+    const map = new maplibregl.Map({
+      container: mapContainerRef.current,
+      style: initialStyle,
+      center: [KAZAN_CENTER.lng, KAZAN_CENTER.lat],
+      zoom: KAZAN_CENTER.zoom,
+      minZoom: 9.5,
+      maxZoom: 18.5,
+      maxBounds: KAZAN_BOUNDS,
+      pitch: 20,
+      bearing: 0,
+      attributionControl: false
+    });
+
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+
+    map.on('style.load', () => {
+      setupLayers(map);
+      setMapLoaded(true);
+    });
+
+    map.on('load', () => {
+      setupLayers(map);
+      setMapLoaded(true);
+
       popupRef.current = new maplibregl.Popup({
         closeButton: false,
         closeOnClick: false,
         className: 'maplibre-popup-industrial'
       });
 
-      // Listen to map movement/pan/zoom to dynamically load hexes for user viewport
+      // Fire initial bounds
+      emitViewportBounds(map);
+
+      // Listen to map movement/pan/zoom to dynamically load hexes via WebSocket
       map.on('moveend', () => {
-        const center = map.getCenter();
-        if (onViewportChange) {
-          onViewportChange({ lat: center.lat, lng: center.lng });
-        }
+        emitViewportBounds(map);
       });
 
-      // Mousemove
+      // Mousemove hover
       map.on('mousemove', 'h3-hexagons-fill', (e) => {
         if (!e.features || e.features.length === 0) return;
         map.getCanvas().style.cursor = 'pointer';
@@ -107,7 +200,7 @@ export function MapContainer({
 
         const ownerHTML = props.isCaptured
           ? `<div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
-               <img src="${props.ownerAvatar}" style="width:22px; height:22px; border-radius:6px; object-fit:cover; border:1px solid rgba(255,255,255,0.2);" />
+               <div style="width:16px; height:16px; border-radius:4px; background:${props.color};"></div>
                <div>
                  <div style="font-weight:600; font-size:12px; color:#f4f4f5;">${props.ownerName}</div>
                  <div style="font-size:10px; color:${props.color}; font-family:'JetBrains Mono', monospace; font-weight:500;">${props.clubName}</div>
@@ -132,14 +225,16 @@ export function MapContainer({
 
       map.on('mouseleave', 'h3-hexagons-fill', () => {
         map.getCanvas().style.cursor = '';
-        popupRef.current.remove();
+        if (popupRef.current) popupRef.current.remove();
       });
 
-      // Click
+      // Click on Hexagon
       map.on('click', 'h3-hexagons-fill', (e) => {
         if (e.features && e.features.length > 0) {
           const h3Idx = e.features[0].properties.h3Index;
-          onHexagonSelect(h3Idx);
+          if (onHexagonSelectRef.current) {
+            onHexagonSelectRef.current(h3Idx);
+          }
         }
       });
     });
@@ -150,7 +245,17 @@ export function MapContainer({
       map.remove();
       mapInstanceRef.current = null;
     };
-  }, []);
+  }, [emitViewportBounds, setupLayers]);
+
+  // Update map style when changed
+  useEffect(() => {
+    if (!mapInstanceRef.current) return;
+    if (currentStyleRef.current === mapStyle) return;
+    currentStyleRef.current = mapStyle;
+
+    const targetStyle = MAP_STYLES[mapStyle] || MAP_STYLES.voyager;
+    mapInstanceRef.current.setStyle(targetStyle, { diff: false });
+  }, [mapStyle]);
 
   // Update map position on landmark selection
   useEffect(() => {
@@ -170,72 +275,17 @@ export function MapContainer({
     const source = map.getSource('h3-hexagons-source');
     if (!source) return;
 
-    const features = hexagons
-      .map((hex) => {
-        const coords = h3ToPolygonCoordinates(hex.h3_index);
-        if (!coords) return null;
-
-        const isSelected = hex.h3_index === selectedH3Index;
-        const owner = hex.owner;
-
-        return {
-          type: 'Feature',
-          properties: {
-            h3Index: hex.h3_index,
-            isCaptured: hex.is_captured,
-            isSelected: isSelected,
-            color: owner ? owner.color : '#27272a',
-            ownerName: owner ? owner.name : 'Свободный сектор',
-            ownerAvatar: owner ? owner.avatar : '',
-            clubName: owner ? owner.club_name : '',
-            score: hex.score || 0
-          },
-          geometry: {
-            type: 'Polygon',
-            coordinates: [coords]
-          }
-        };
-      })
-      .filter(Boolean);
-
     source.setData({
       type: 'FeatureCollection',
-      features
+      features: buildFeatures()
     });
-  }, [mapLoaded, hexagons, selectedH3Index]);
+  }, [mapLoaded, hexagons, selectedH3Index, buildFeatures]);
 
   return (
     <div className="relative w-full h-full bg-zinc-950">
       <div ref={mapContainerRef} className="w-full h-full" />
-
-      {/* Industrial Floating Legend */}
-      <div className="absolute bottom-6 left-6 z-20 panel-dock p-3 rounded-2xl border border-zinc-800/90 text-xs hidden sm:block pointer-events-auto">
-        <div className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider mb-2 font-semibold">
-          Клубы Казани
-        </div>
-        <div className="space-y-1.5 font-sans">
-          <div className="flex items-center gap-2 text-zinc-300">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#f97316]"></span>
-            <span>Incomsystem</span>
-          </div>
-          <div className="flex items-center gap-2 text-zinc-300">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#38bdf8]"></span>
-            <span>Кремлёвская Стража</span>
-          </div>
-          <div className="flex items-center gap-2 text-zinc-300">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#10b981]"></span>
-            <span>Волга Пейс</span>
-          </div>
-          <div className="flex items-center gap-2 text-zinc-300">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#a855f7]"></span>
-            <span>Тигры Кабана</span>
-          </div>
-          <div className="flex items-center gap-2 text-zinc-300">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#f43f5e]"></span>
-            <span>Innopolis Cyber</span>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
+
+export default MapContainer;
