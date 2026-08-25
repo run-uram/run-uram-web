@@ -120,7 +120,7 @@ export async function login(loginStr, passwordStr) {
 }
 
 /**
- * GET/POST /api/v1/auth/ws-ticket
+ * POST /api/v1/auth/ws-ticket
  * Header: Authorization: Bearer <access_token>
  * Response: { status: "success", ws_ticket: "..." }
  */
@@ -134,16 +134,7 @@ export async function refreshWsTicket() {
   const endpoint = base ? `${base}/api/v1/auth/ws-ticket` : '/api/v1/auth/ws-ticket';
 
   try {
-    const res = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-
-    // Try POST if GET returned 404 or 405
-    if (res.status === 405 || res.status === 404) {
-      const postRes = await fetch(endpoint, {
+    const postRes = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`
@@ -154,8 +145,7 @@ export async function refreshWsTicket() {
         localStorage.setItem(STORAGE_KEYS.WS_TICKET, postData.ws_ticket);
         return postData.ws_ticket;
       }
-    }
-
+    
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.status !== 'success' || !data.ws_ticket) {
       throw new Error(data.message || `Не удалось обновить WebSocket тикет (HTTP ${res.status})`);

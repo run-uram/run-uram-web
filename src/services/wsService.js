@@ -15,6 +15,7 @@ class WebSocketService {
     this.reconnectTimer = null;
     this.manualDisconnect = false;
     this.lastError = null;
+    this.activeSubscribedBox = null;
   }
 
   /**
@@ -192,15 +193,61 @@ class WebSocketService {
   }
 
   /**
-   * Subscribe to map viewport bounding box
+   * Subscribe to map viewport bounding box with spatial containment caching & throttling
    */
-  subscribeViewport(swLng, swLat, neLng, neLat) {
+  subscribeViewport(swLng, swLat, neLng, neLat, force = false) {
+    const sw_lng = Number(swLng);
+    const sw_lat = Number(swLat);
+    const ne_lng = Number(neLng);
+    const ne_lat = Number(neLat);
+
+    if (isNaN(sw_lng) || isNaN(sw_lat) || isNaN(ne_lng) || isNaN(ne_lat)) {
+      return false;
+    }
+
+    const now = Date.now();
+
+    // Check if the current camera viewport is already covered by the active subscribed buffered box
+    if (!force && this.activeSubscribedBox) {
+      const { swLng: bSwLng, swLat: bSwLat, neLng: bNeLng, neLat: bNeLat, time } = this.activeSubscribedBox;
+      const isWithinBounds = (
+        sw_lng >= bSwLng &&
+        sw_lat >= bSwLat &&
+        ne_lng <= bNeLng &&
+        ne_lat <= bNeLat
+      );
+
+      // If within buffered bounds and younger than 40 seconds, skip sending redundant WS packets
+      if (isWithinBounds && (now - time < 40000)) {
+        return true;
+      }
+    }
+
+    // Add a 20% spatial buffer around the viewport so small pans/zooms don't fire extra requests
+    const lngSpan = Math.max(Math.abs(ne_lng - sw_lng), 0.005);
+    const latSpan = Math.max(Math.abs(ne_lat - sw_lat), 0.005);
+    const bufferLng = lngSpan * 0.20;
+    const bufferLat = latSpan * 0.20;
+
+    const bufferedSwLng = sw_lng - bufferLng;
+    const bufferedSwLat = sw_lat - bufferLat;
+    const bufferedNeLng = ne_lng + bufferLng;
+    const bufferedNeLat = ne_lat + bufferLat;
+
+    this.activeSubscribedBox = {
+      swLng: bufferedSwLng,
+      swLat: bufferedSwLat,
+      neLng: bufferedNeLng,
+      neLat: bufferedNeLat,
+      time: now
+    };
+
     return this.sendEnvelope({
       subscribe_viewport_request: {
-        south_west_lng: Number(swLng),
-        south_west_lat: Number(swLat),
-        north_east_lng: Number(neLng),
-        north_east_lat: Number(neLat)
+        south_west_lng: bufferedSwLng,
+        south_west_lat: bufferedSwLat,
+        north_east_lng: bufferedNeLng,
+        north_east_lat: bufferedNeLat
       }
     });
   }
@@ -284,6 +331,7 @@ class WebSocketService {
    */
   disconnect() {
     this.manualDisconnect = true;
+    this.activeSubscribedBox = null;
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.ws) {
       this.ws.close();

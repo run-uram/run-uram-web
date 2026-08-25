@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogIn, Lock, User, Server, AlertCircle, CheckCircle2, Zap, Shield, ChevronRight, RefreshCw } from 'lucide-react';
+import { LogIn, Lock, User, Server, AlertCircle, CheckCircle2, Zap, ChevronRight, RefreshCw } from 'lucide-react';
 import { login, getApiBaseUrl, getWsBaseUrl, setCustomUrls } from '../services/authService.js';
 import wsService from '../services/wsService.js';
 
@@ -73,15 +73,12 @@ export function LoginPage({ onLoginSuccess }) {
           </div>
           <div className="flex items-center justify-center gap-2 mb-1">
             <h1 className="text-2xl font-black tracking-tight text-white font-heading">
-              RUNNING CUP
+              RUN URAM
             </h1>
             <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">
               URAM KZN
             </span>
           </div>
-          <p className="text-xs text-zinc-400">
-            Территориальные забеги • WebSocket & Protobuf
-          </p>
         </div>
 
         {/* Login Form */}
@@ -201,8 +198,7 @@ export function LoginPage({ onLoginSuccess }) {
 
         {/* Footer Info */}
         <div className="mt-6 pt-4 border-t border-zinc-800/80 text-center text-[11px] text-zinc-500 flex items-center justify-center gap-2">
-          <Shield className="w-3.5 h-3.5 text-zinc-500" />
-          <span>Stateless JWT Auth + Protobuf Tickets</span>
+          <span>Created by ... </span>
         </div>
       </div>
     </div>

@@ -248,26 +248,30 @@ export function decodeEnvelope(buffer) {
 }
 
 /**
- * Helper to convert 64-bit H3 index integer/string to 15-char H3 hex representation
+ * Helper to convert 64-bit H3 index integer/Long/string to 15-char H3 hex representation
  */
 export function h3Uint64ToHexString(val) {
   if (!val || val === '0' || val === 0) return '';
+  if (protobuf.util.Long && protobuf.util.Long.isLong(val)) {
+    return val.toString(16).toLowerCase();
+  }
   if (typeof val === 'string') {
-    // If it's already 15-char lowercase hex
-    if (/^[0-9a-fA-F]{15}$/.test(val)) return val.toLowerCase();
+    // If it's already 15-16 char hex
+    if (/^[0-9a-fA-F]{15,16}$/.test(val)) return val.toLowerCase();
     try {
-      const b = BigInt(val);
-      return b.toString(16).toLowerCase();
+      return BigInt(val).toString(16).toLowerCase();
     } catch {
-      return val;
+      return val.toLowerCase();
     }
   }
   if (typeof val === 'bigint' || typeof val === 'number') {
-    return val.toString(16).toLowerCase();
+    return BigInt(val).toString(16).toLowerCase();
   }
   if (val && typeof val.toString === 'function') {
     try {
-      return BigInt(val.toString()).toString(16).toLowerCase();
+      const s = val.toString();
+      if (/^[0-9a-fA-F]{15,16}$/.test(s)) return s.toLowerCase();
+      return BigInt(s).toString(16).toLowerCase();
     } catch {
       return val.toString();
     }
@@ -276,14 +280,27 @@ export function h3Uint64ToHexString(val) {
 }
 
 /**
- * Helper to convert H3 hex string to BigInt / numeric string for Protobuf uint64
+ * Helper to convert H3 hex string to protobuf.util.Long (unsigned 64-bit) for Protobuf uint64
  */
 export function hexStringToH3Uint64(hexStr) {
-  if (!hexStr) return '0';
+  if (!hexStr) return protobuf.util.Long ? protobuf.util.Long.UZERO : '0';
+  if (protobuf.util.Long) {
+    try {
+      if (protobuf.util.Long.isLong(hexStr)) return hexStr;
+      if (typeof hexStr === 'string') {
+        const cleanHex = hexStr.startsWith('0x') || hexStr.startsWith('0X') ? hexStr.slice(2) : hexStr;
+        return protobuf.util.Long.fromString(cleanHex, true, 16);
+      }
+      return protobuf.util.Long.fromValue(hexStr, true);
+    } catch (e) {
+      console.warn('Failed to parse hex string to Long:', e);
+      return protobuf.util.Long.UZERO;
+    }
+  }
   try {
-    return BigInt('0x' + hexStr).toString();
+    return BigInt('0x' + hexStr);
   } catch {
-    return '0';
+    return 0n;
   }
 }
 

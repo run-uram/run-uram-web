@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Award, Flame, Navigation, Clock, Shield, X, LogOut, CheckCircle2, MapPin } from 'lucide-react';
+import { Award, Flame, Navigation, Clock, X, LogOut, MapPin } from 'lucide-react';
 import { clearSession, getStoredUser } from '../services/authService.js';
 import wsService from '../services/wsService.js';
 
@@ -8,15 +8,15 @@ export function UserProfileModal({ isOpen, onClose, profileData, onLogout }) {
 
   const user = getStoredUser() || {};
   const data = profileData || {
-    username: user.username || 'Анонимный бегун',
-    email: 'runner@runningcup.ru',
+    username: user.username || 'Атлет',
+    email: user.login ? `${user.login}@uram.ru` : 'Атлет URAM',
     player_color_hex: '#f97316',
     team_tag: 'URAM',
-    total_distance_meters: 18450.5,
-    total_duration_seconds: 4920,
-    total_runs: 12,
-    total_uram_points: 2450,
-    current_held_hexagons: 9
+    total_distance_meters: 0,
+    total_duration_seconds: 0,
+    total_runs: 0,
+    total_uram_points: 0,
+    current_held_hexagons: 0
   };
 
   const distanceKm = ((data.total_distance_meters || 0) / 1000).toFixed(2);
@@ -38,12 +38,12 @@ export function UserProfileModal({ isOpen, onClose, profileData, onLogout }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
-      <div 
+      <div
         className="relative w-full max-w-lg bg-zinc-900 border border-zinc-700/70 rounded-3xl shadow-2xl overflow-hidden text-zinc-100"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Banner with Player Color Glow */}
-        <div 
+        <div
           className="relative h-28 w-full p-5 flex items-end justify-between overflow-hidden"
           style={{
             background: `linear-gradient(135deg, ${data.player_color_hex || '#f97316'}44 0%, #18181b 100%)`
@@ -60,7 +60,7 @@ export function UserProfileModal({ isOpen, onClose, profileData, onLogout }) {
 
           {/* Avatar and Main Info */}
           <div className="flex items-center gap-3.5 z-10 translate-y-3">
-            <div 
+            <div
               className="w-16 h-16 rounded-2xl border-2 flex items-center justify-center shadow-xl text-white font-black text-2xl uppercase"
               style={{
                 backgroundColor: data.player_color_hex || '#f97316',

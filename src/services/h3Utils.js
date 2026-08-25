@@ -1,8 +1,10 @@
 import * as h3 from 'h3-js';
-import { MOCK_RUNNERS, KAZAN_CLUBS, KAZAN_BOUNDS } from './mockData.js';
+import { KAZAN_BOUNDS } from './mockData.js';
 
-// Cache for hex ownership to maintain consistency across map moves and detail clicks
-const hexStateCache = new Map();
+export const DEFAULT_H3_RESOLUTION = 9;
+
+// Memoization cache for H3 cell polygon coordinates to prevent recalculating trig on every render
+const polygonCache = new Map();
 
 /**
  * Check if a given H3 cell center falls strictly within Kazan bounding box
@@ -13,14 +15,14 @@ export function isH3InKazanBounds(h3Index) {
     const [[minLng, minLat], [maxLng, maxLat]] = KAZAN_BOUNDS;
     return lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng;
   } catch (err) {
-    return true; // Fallback
+    return true;
   }
 }
 
 /**
  * Get H3 index for a lat/lng coordinate
  */
-export function getH3Index(lat, lng, resolution = 8) {
+export function getH3Index(lat, lng, resolution = DEFAULT_H3_RESOLUTION) {
   try {
     return h3.latLngToCell(lat, lng, resolution);
   } catch (err) {
@@ -30,28 +32,26 @@ export function getH3Index(lat, lng, resolution = 8) {
 }
 
 /**
- * Get k-ring hexes around center (filtered strictly to Kazan boundary)
- */
-export function getKRingHexes(centerH3, radius = 5) {
-  try {
-    const hexes = h3.gridDisk(centerH3, radius);
-    // Optimization: Filter out any hexes that go beyond Kazan boundaries
-    return hexes.filter(isH3InKazanBounds);
-  } catch (err) {
-    console.error('Error calculating gridDisk:', err);
-  }
-  return [centerH3];
-}
-
-/**
  * Convert an H3 Cell Index to GeoJSON Polygon coordinates [[lng, lat], ...]
+ * Result is cached in memory.
  */
 export function h3ToPolygonCoordinates(h3Index) {
+  if (!h3Index) return null;
+
+  if (polygonCache.has(h3Index)) {
+    return polygonCache.get(h3Index);
+  }
+
   try {
     const boundary = h3.cellToBoundary(h3Index, true); // true = format as [lng, lat] GeoJSON
     if (boundary && boundary.length > 0) {
-      // GeoJSON polygons require closing point (first point === last point)
-      return [...boundary, boundary[0]];
+      // Ensure closing point (first === last)
+      const first = boundary[0];
+      const last = boundary[boundary.length - 1];
+      const isClosed = first[0] === last[0] && first[1] === last[1];
+      const result = isClosed ? boundary : [...boundary, first];
+      polygonCache.set(h3Index, result);
+      return result;
     }
   } catch (err) {
     console.error(`Error converting h3Index ${h3Index} to polygon:`, err);
@@ -60,97 +60,44 @@ export function h3ToPolygonCoordinates(h3Index) {
 }
 
 /**
- * Get or seed hex details for mock engine
+ * Generate all H3 res=9 cells covering the given viewport bounding box,
+ * clamped to Kazan bounds to ensure performance and prevent massive allocations.
  */
-export function getOrSeedHexDetails(h3Index) {
-  if (hexStateCache.has(h3Index)) {
-    return hexStateCache.get(h3Index);
+export function getViewportH3Cells(bounds, resolution = DEFAULT_H3_RESOLUTION) {
+  if (!bounds) return [];
+
+  const [[kazanMinLng, kazanMinLat], [kazanMaxLng, kazanMaxLat]] = KAZAN_BOUNDS;
+
+  // Add 15% buffer around viewport for seamless edge-to-edge grid coverage
+  const lngSpan = Math.abs(bounds.neLng - bounds.swLng);
+  const latSpan = Math.abs(bounds.neLat - bounds.swLat);
+  const bufferLng = lngSpan * 0.15;
+  const bufferLat = latSpan * 0.15;
+
+  // Clamp viewport bounds to Kazan region
+  const swLat = Math.max(bounds.swLat - bufferLat, kazanMinLat);
+  const swLng = Math.max(bounds.swLng - bufferLng, kazanMinLng);
+  const neLat = Math.min(bounds.neLat + bufferLat, kazanMaxLat);
+  const neLng = Math.min(bounds.neLng + bufferLng, kazanMaxLng);
+
+  if (swLat >= neLat || swLng >= neLng) {
+    return [];
   }
 
-  // Deterministic pseudo-random generation based on H3 index string hash
-  let hash = 0;
-  for (let i = 0; i < h3Index.length; i++) {
-    hash = (hash << 5) - hash + h3Index.charCodeAt(i);
-    hash |= 0;
+  try {
+    // h3.polygonToCells expects polygon ring as [[lat, lng], ...]
+    const poly = [
+      [swLat, swLng],
+      [neLat, swLng],
+      [neLat, neLng],
+      [swLat, neLng],
+      [swLat, swLng]
+    ];
+
+    const cells = h3.polygonToCells(poly, resolution);
+    return cells;
+  } catch (err) {
+    console.error('Error generating viewport H3 cells:', err);
+    return [];
   }
-  const positiveHash = Math.abs(hash);
-
-  const isCaptured = (positiveHash % 10) < 8;
-  const runner = MOCK_RUNNERS[positiveHash % MOCK_RUNNERS.length];
-  const score = isCaptured ? (positiveHash % 850) + 150 : 0;
-  const capturedMinutesAgo = (positiveHash % 1440) + 5;
-  const capturedDate = new Date(Date.now() - capturedMinutesAgo * 60 * 1000).toISOString();
-
-  const details = {
-    h3_index: h3Index,
-    is_captured: isCaptured,
-    score: score,
-    captured_at: capturedDate,
-    owner: isCaptured ? {
-      id: runner.id,
-      name: runner.name,
-      handle: runner.handle,
-      avatar: runner.avatar,
-      club_name: runner.club.name,
-      club_badge: runner.club.badge,
-      color: runner.club.color,
-      avg_pace: runner.avgPace
-    } : null,
-    history: isCaptured ? [
-      {
-        id: `h-1-${h3Index}`,
-        runner: runner.name,
-        action: 'Захвачен во время пробежки',
-        date: new Date(Date.now() - capturedMinutesAgo * 60 * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        score: score
-      },
-      {
-        id: `h-2-${h3Index}`,
-        runner: 'Предыдущий бегун',
-        action: 'Перехвачен конфликтный сектор',
-        date: 'Вчера, 18:40',
-        score: Math.max(50, score - 120)
-      }
-    ] : []
-  };
-
-  hexStateCache.set(h3Index, details);
-  return details;
-}
-
-/**
- * Force set hex details (used when running simulator captures a hex)
- */
-export function updateHexOwner(h3Index, runner, extraScore = 300) {
-  const existing = hexStateCache.get(h3Index) || {};
-  const newScore = (existing.score || 100) + extraScore;
-  const updated = {
-    h3_index: h3Index,
-    is_captured: true,
-    score: newScore,
-    captured_at: new Date().toISOString(),
-    owner: {
-      id: runner.id,
-      name: runner.name,
-      handle: runner.handle,
-      avatar: runner.avatar,
-      club_name: runner.club.name,
-      club_badge: runner.club.badge,
-      color: runner.club.color,
-      avg_pace: runner.avgPace
-    },
-    history: [
-      {
-        id: `h-new-${Date.now()}`,
-        runner: runner.name,
-        action: 'Захвачен прямо сейчас! 🔥',
-        date: 'Только что',
-        score: newScore
-      },
-      ...(existing.history || [])
-    ]
-  };
-
-  hexStateCache.set(h3Index, updated);
-  return updated;
 }

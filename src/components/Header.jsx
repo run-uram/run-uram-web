@@ -1,12 +1,10 @@
 import React from 'react';
-import { Trophy, Zap, LogOut, User, Wifi, WifiOff } from 'lucide-react';
+import { Zap, LogOut, WifiOff, MapPin } from 'lucide-react';
 import { KAZAN_LANDMARKS } from '../services/mockData.js';
 
 export function Header({
   selectedLandmark,
   onSelectLandmark,
-  h3Resolution,
-  onChangeResolution,
   currentMapStyle,
   onSelectMapStyle,
   onOpenProfile,
@@ -51,13 +49,13 @@ export function Header({
           </div>
           <div>
             <div className="flex items-center gap-1.5 leading-none">
-              <span className="font-heading font-black text-sm text-zinc-100 tracking-tight">RUNNING CUP</span>
+              <span className="font-heading font-black text-sm text-zinc-100 tracking-tight">RUN URAM</span>
               <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-950 text-orange-400 border border-orange-500/30">
                 PRO BUF
               </span>
             </div>
             <div className="flex items-center gap-1 text-[11px] text-zinc-400 font-mono mt-0.5">
-              <span>URAM KAZAN</span>
+              <span>KAZAN</span>
             </div>
           </div>
         </div>
@@ -66,7 +64,7 @@ export function Header({
 
         {/* Quick Landmarks */}
         <div className="hidden lg:flex items-center gap-1">
-          {KAZAN_LANDMARKS.slice(0, 3).map((landmark) => (
+          {KAZAN_LANDMARKS.slice(0, 4).map((landmark) => (
             <button
               key={landmark.id}
               onClick={() => onSelectLandmark(landmark)}
@@ -87,7 +85,7 @@ export function Header({
         {getWsBadge()}
         <div className="h-4 w-px bg-zinc-800"></div>
         <div className="flex items-center gap-1.5">
-          <span className="text-zinc-500">Сот в стриме:</span>
+          <span className="text-zinc-500">Сот в кадре:</span>
           <span className="font-bold text-zinc-200">{stats.hexCount}</span>
         </div>
         <div className="h-3 w-px bg-zinc-800"></div>
@@ -115,23 +113,6 @@ export function Header({
               }`}
             >
               {style.label}
-            </button>
-          ))}
-        </div>
-
-        {/* H3 Resolution Switcher */}
-        <div className="flex items-center bg-zinc-950/80 p-1 rounded-xl border border-zinc-800/80 mr-1">
-          {[8, 9, 10].map((res) => (
-            <button
-              key={res}
-              onClick={() => onChangeResolution(res)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-mono font-medium transition ${
-                h3Resolution === res
-                  ? 'bg-zinc-800 text-orange-400 border border-zinc-700 font-bold'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              H3-{res}
             </button>
           ))}
         </div>
