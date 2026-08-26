@@ -1,5 +1,5 @@
 import React from 'react';
-import { Zap, LogOut, WifiOff, MapPin } from 'lucide-react';
+import { LogOut, WifiOff } from 'lucide-react';
 import { KAZAN_LANDMARKS } from '../services/mockData.js';
 
 export function Header({
@@ -44,13 +44,17 @@ export function Header({
       {/* Brand & Status Dock */}
       <div className="pointer-events-auto panel-dock px-4 py-2.5 rounded-2xl flex items-center gap-3 border border-zinc-800/90 bg-zinc-900/90 backdrop-blur-xl">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-orange-500 to-amber-400 flex items-center justify-center text-zinc-950 shadow-md shadow-orange-500/20">
-            <Zap className="w-4 h-4 fill-zinc-950" />
+          <div className="w-8 h-8 rounded-xl bg-zinc-950/90 border border-zinc-800 flex items-center justify-center p-1 shadow-md shadow-[#fe4a09]/15">
+            <img 
+              src="/app_icon_stylized_run_svg.svg" 
+              alt="RunUram" 
+              className="w-full h-full object-contain filter drop-shadow(0 1px 4px rgba(254,74,9,0.4))" 
+            />
           </div>
           <div>
             <div className="flex items-center gap-1.5 leading-none">
               <span className="font-heading font-black text-sm text-zinc-100 tracking-tight">RUN URAM</span>
-              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-950 text-orange-400 border border-orange-500/30">
+              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-950 text-orange-400 border border-[#fe4a09]/30">
                 PRO BUF
               </span>
             </div>

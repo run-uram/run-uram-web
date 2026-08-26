@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogIn, Lock, User, Server, AlertCircle, CheckCircle2, Zap, ChevronRight, RefreshCw } from 'lucide-react';
+import { Lock, User, Server, AlertCircle, CheckCircle2, ChevronRight, RefreshCw } from 'lucide-react';
 import { login, getApiBaseUrl, getWsBaseUrl, setCustomUrls } from '../services/authService.js';
 import wsService from '../services/wsService.js';
 
@@ -50,9 +50,9 @@ export function LoginPage({ onLoginSuccess }) {
 
   return (
     <div className="relative min-h-screen w-screen bg-zinc-950 flex items-center justify-center p-4 overflow-hidden select-none font-sans">
-      {/* Dynamic Background Glowing Blobs */}
-      <div className="absolute top-1/4 -left-32 w-96 h-96 bg-orange-600/20 rounded-full blur-3xl pointer-events-none animate-pulse"></div>
-      <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-amber-500/15 rounded-full blur-3xl pointer-events-none animate-pulse delay-700"></div>
+      {/* Dynamic Background Glowing Blobs matching the new icon palette */}
+      <div className="absolute top-1/4 -left-32 w-96 h-96 bg-[#fe4a09]/20 rounded-full blur-3xl pointer-events-none animate-pulse"></div>
+      <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-orange-600/15 rounded-full blur-3xl pointer-events-none animate-pulse delay-700"></div>
 
       {/* Grid Pattern Background */}
       <div 
@@ -66,19 +66,29 @@ export function LoginPage({ onLoginSuccess }) {
       {/* Center Auth Card */}
       <div className="relative z-10 w-full max-w-md bg-zinc-900/90 border border-zinc-800/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 text-zinc-100 animate-in fade-in zoom-in-95 duration-300">
         
-        {/* Brand Header */}
+        {/* Brand Header with new app icon */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-orange-500 to-amber-400 text-zinc-950 shadow-lg shadow-orange-500/25 mb-3.5">
-            <Zap className="w-7 h-7 fill-zinc-950" />
+          <div className="relative inline-flex items-center justify-center mb-4">
+            <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-[#fe4a09] to-orange-500 opacity-75 blur-md"></div>
+            <div className="relative w-16 h-16 rounded-2xl bg-zinc-950 border border-zinc-800/90 p-2 shadow-xl flex items-center justify-center">
+              <img 
+                src="/app_icon_stylized_run_svg.svg" 
+                alt="RunUram Icon" 
+                className="w-full h-full object-contain filter drop-shadow(0 2px 8px rgba(254,74,9,0.3))" 
+              />
+            </div>
           </div>
           <div className="flex items-center justify-center gap-2 mb-1">
             <h1 className="text-2xl font-black tracking-tight text-white font-heading">
               RUN URAM
             </h1>
-            <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-[#fe4a09]/20 text-orange-400 border border-[#fe4a09]/30">
               URAM KZN
             </span>
           </div>
+          <p className="text-xs text-zinc-400 font-sans mt-1">
+            Интерактивная карта захвата территорий Казани
+          </p>
         </div>
 
         {/* Login Form */}
@@ -180,11 +190,11 @@ export function LoginPage({ onLoginSuccess }) {
           <button
             type="submit"
             disabled={loading || success}
-            className="w-full mt-4 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 active:scale-[0.98] text-zinc-950 font-bold text-sm shadow-lg shadow-orange-500/25 disabled:opacity-50 transition cursor-pointer"
+            className="w-full mt-4 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-[#fe4a09] to-orange-500 hover:from-[#ea3c00] hover:to-orange-600 active:scale-[0.98] text-white font-bold text-sm shadow-lg shadow-[#fe4a09]/25 disabled:opacity-50 transition cursor-pointer"
           >
             {loading ? (
               <>
-                <RefreshCw className="w-4 h-4 animate-spin text-zinc-950" />
+                <RefreshCw className="w-4 h-4 animate-spin text-white" />
                 <span>Авторизация...</span>
               </>
             ) : (

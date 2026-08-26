@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Shield, History, Zap, Trophy, Users, MapPin, Footprints } from 'lucide-react';
+import { X, Shield, Trophy, Footprints } from 'lucide-react';
 import wsService from '../services/wsService.js';
 
 export function HexagonDetailModal({
@@ -36,9 +36,9 @@ export function HexagonDetailModal({
     <div className="absolute top-20 right-6 z-30 w-full max-w-sm panel-industrial rounded-3xl border border-zinc-800/90 bg-zinc-900/95 backdrop-blur-xl shadow-2xl overflow-hidden text-zinc-100 animate-in slide-in-from-right-4 duration-200">
       {/* Header */}
       <div className="p-4 bg-zinc-950/60 border-b border-zinc-800/80 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-xl bg-orange-500/20 text-orange-400 flex items-center justify-center border border-orange-500/30">
-            <MapPin className="w-4 h-4" />
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-xl bg-zinc-950 border border-[#fe4a09]/40 p-1 flex items-center justify-center shadow-sm shadow-[#fe4a09]/20">
+            <img src="/app_icon_stylized_run_svg.svg" alt="Hexagon" className="w-full h-full object-contain" />
           </div>
           <div>
             <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">H3 Hexagon</div>
@@ -49,7 +49,7 @@ export function HexagonDetailModal({
         </div>
         <button
           onClick={onClose}
-          className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition"
+          className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition cursor-pointer"
         >
           <X className="w-4 h-4" />
         </button>

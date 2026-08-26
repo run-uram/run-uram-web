@@ -49,6 +49,13 @@ export function UserProfileModal({ isOpen, onClose, profileData, onLogout }) {
             background: `linear-gradient(135deg, ${data.player_color_hex || '#f97316'}44 0%, #18181b 100%)`
           }}
         >
+          <div className="absolute top-3 left-4 flex items-center gap-2">
+            <div className="w-6 h-6 rounded-lg bg-zinc-950/80 border border-zinc-800 p-0.5 flex items-center justify-center shadow">
+              <img src="/app_icon_stylized_run_svg.svg" alt="RunUram" className="w-full h-full object-contain" />
+            </div>
+            <span className="text-[11px] font-heading font-black tracking-tight text-white/90">RUN URAM</span>
+          </div>
+
           <div className="absolute top-3 right-3 flex items-center gap-2">
             <button
               onClick={onClose}
