@@ -140,6 +140,12 @@ class WebSocketService {
     if (envelope.user_profile_response) {
       this.emit('user_profile_response', envelope.user_profile_response);
     }
+    if (envelope.get_user_runs_response) {
+      this.emit('get_user_runs_response', envelope.get_user_runs_response);
+    }
+    if (envelope.get_run_details_response) {
+      this.emit('get_run_details_response', envelope.get_run_details_response);
+    }
     if (envelope.subscribe_viewport_response) {
       this.emit('subscribe_viewport_response', envelope.subscribe_viewport_response);
     }
@@ -188,6 +194,30 @@ class WebSocketService {
     return this.sendEnvelope({
       get_user_profile_request: {
         user_id: userId
+      }
+    });
+  }
+
+  /**
+   * Request user run history list with pagination
+   */
+  requestUserRuns(userId = 0, limit = 20, offset = 0) {
+    return this.sendEnvelope({
+      get_user_runs_request: {
+        user_id: userId,
+        limit: limit,
+        offset: offset
+      }
+    });
+  }
+
+  /**
+   * Request detailed run telemetry and GPS route points for map rendering
+   */
+  requestRunDetails(runId) {
+    return this.sendEnvelope({
+      get_run_details_request: {
+        run_id: runId
       }
     });
   }

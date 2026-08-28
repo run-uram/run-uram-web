@@ -1,27 +1,29 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { LoginPage } from './components/LoginPage.jsx';
 import { Header } from './components/Header.jsx';
+import { SidebarNav } from './components/SidebarNav.jsx';
 import { MapContainer } from './components/MapContainer.jsx';
-import { HexagonDetailModal } from './components/HexagonDetailModal.jsx';
+import { HexInspectorDrawer } from './components/HexInspectorDrawer.jsx';
+import { UserAnalyticsView } from './components/UserAnalyticsView.jsx';
+import { FactionLeaderboardView } from './components/FactionLeaderboardView.jsx';
 import { UserProfileModal } from './components/UserProfileModal.jsx';
+import { RunDetailsModal } from './components/RunDetailsModal.jsx';
 import { LiveTicker } from './components/LiveTicker.jsx';
 
-import { KAZAN_CENTER, KAZAN_LANDMARKS } from './services/mockData.js';
+import { KAZAN_CENTER, KAZAN_LANDMARKS, MOCK_RUNS_HISTORY } from './services/mockData.js';
 import { isAuthenticated, getStoredUser, clearSession } from './services/authService.js';
 import wsService from './services/wsService.js';
 import { h3Uint64ToHexString } from './services/protoService.js';
 
 // Runner palette for consistent distinct player colors across the map
 const RUNNER_PALETTE = [
-  '#f97316', // Orange
-  '#a855f7', // Purple
-  '#3b82f6', // Blue
-  '#10b981', // Emerald
-  '#eab308', // Amber
+  '#fe4a09', // Electric Orange
+  '#2563eb', // Vibrant Blue
+  '#0284c7', // Cyber Cyan
+  '#10b981', // Neon Emerald
+  '#7c3aed', // Laser Purple
+  '#f59e0b', // Amber
   '#ec4899', // Pink
-  '#06b6d4', // Cyan
-  '#f43f5e', // Rose
-  '#8b5cf6', // Violet
   '#14b8a6'  // Teal
 ];
 
@@ -29,7 +31,7 @@ function getRunnerColor(userId, providedColor) {
   if (providedColor && providedColor.startsWith('#') && providedColor.length >= 4 && providedColor !== '#000000' && providedColor !== '#27272a') {
     return providedColor;
   }
-  if (!userId || userId === '0' || userId === 0) return '#f97316';
+  if (!userId || userId === '0' || userId === 0) return '#fe4a09';
   const str = String(userId);
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -44,20 +46,27 @@ export function App() {
   const [userProfile, setUserProfile] = useState(null);
   const [wsStatus, setWsStatus] = useState(wsService.status);
 
+  // App Navigation
+  const [currentView, setCurrentView] = useState('map'); // 'map' | 'analytics' | 'factions'
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
   // Cache of known runner profiles: userId -> { username, color }
-  const knownRunnersRef = React.useRef(new Map());
+  const knownRunnersRef = useRef(new Map());
   // Cache of requested hexagon details to prevent duplicate queries
-  const requestedHexDetailsRef = React.useRef(new Set());
+  const requestedHexDetailsRef = useRef(new Set());
 
   // Map state
   const [selectedLandmark, setSelectedLandmark] = useState(KAZAN_LANDMARKS[0]);
-  const [mapStyle, setMapStyle] = useState('voyager');
   const [centerPosition, setCenterPosition] = useState(KAZAN_CENTER);
 
   // Protobuf realtime state
   const [capturedHexagonsMap, setCapturedHexagonsMap] = useState(new Map());
   const [selectedH3Index, setSelectedH3Index] = useState(null);
   const [hexagonDetails, setHexagonDetails] = useState(null);
+
+  // Run Details & History State
+  const [selectedRunForModal, setSelectedRunForModal] = useState(null);
+  const [activeRunRoute, setActiveRunRoute] = useState(null);
 
   // Modals & events
   const [showProfileModal, setShowProfileModal] = useState(false);
@@ -75,7 +84,10 @@ export function App() {
     // 2. UserProfile Protobuf response
     const unsubProfile = wsService.on('user_profile_response', (profile) => {
       if (profile) {
-        setUserProfile(profile);
+        setUserProfile((prev) => ({
+          ...prev,
+          ...profile
+        }));
         if (profile.user_id && profile.username) {
           knownRunnersRef.current.set(String(profile.user_id), {
             username: profile.username,
@@ -85,12 +97,30 @@ export function App() {
       }
     });
 
-    // 3. Viewport Protobuf response (stream of hexagons in camera viewport)
+    // 3. User Runs Protobuf response
+    const unsubUserRuns = wsService.on('get_user_runs_response', (resp) => {
+      if (resp && resp.runs) {
+        console.log('[WebSocket] Received user runs history:', resp.runs);
+      }
+    });
+
+    // 4. Run Details Protobuf response
+    const unsubRunDetails = wsService.on('get_run_details_response', (resp) => {
+      if (resp) {
+        console.log('[WebSocket] Received run details:', resp);
+        const detailedRun = {
+          ...resp.summary,
+          route_points: resp.route_points,
+          captured_h3_indices: (resp.captured_h3_indices || []).map(idx => h3Uint64ToHexString(idx))
+        };
+        setSelectedRunForModal(detailedRun);
+      }
+    });
+
+    // 5. Viewport Protobuf response
     const unsubViewport = wsService.on('subscribe_viewport_response', (resp) => {
       if (resp && resp.hexagons) {
-        if (resp.hexagons.length === 0) {
-          return;
-        }
+        if (resp.hexagons.length === 0) return;
 
         const hexesToPrefetch = [];
 
@@ -105,10 +135,7 @@ export function App() {
             const rawOwner = hex.owner_username?.trim();
             const userIdStr = hex.owner_user_id ? String(hex.owner_user_id) : null;
 
-            // Check if we already know this user from runner cache
             const cachedRunner = userIdStr ? knownRunnersRef.current.get(userIdStr) : null;
-
-            // Check if existing map record has explicit resolved name (e.g. from hexagon_details_response)
             const existingName = existing?.owner?.name;
             const hasExistingExplicitName = existingName && existingName !== 'Бегун' && existingName !== 'Атлет' && !existingName.startsWith('Атлет #');
             const hasNewExplicitName = rawOwner && rawOwner !== 'Бегун' && rawOwner !== 'Атлет';
@@ -123,7 +150,6 @@ export function App() {
 
             const topScore = hex.top_score || existing?.score || 0;
 
-            // Register in runner cache if explicit name is available
             if (userIdStr && hasNewExplicitName) {
               knownRunnersRef.current.set(userIdStr, {
                 username: rawOwner,
@@ -144,7 +170,6 @@ export function App() {
               } : null
             };
 
-            // If captured hex doesn't have an explicit runner name yet, queue for prefetch
             if (isCaptured && (!hasNewExplicitName && !hasExistingExplicitName && !cachedRunner)) {
               if (!requestedHexDetailsRef.current.has(hexStr)) {
                 hexesToPrefetch.push(hexStr);
@@ -160,7 +185,6 @@ export function App() {
           return hasChanges ? newMap : prevMap;
         });
 
-        // Prefetch details for newly discovered captured hexagons in viewport (throttled)
         if (hexesToPrefetch.length > 0 && wsService.status === 'connected') {
           hexesToPrefetch.slice(0, 8).forEach((h3Idx, idx) => {
             requestedHexDetailsRef.current.add(h3Idx);
@@ -174,12 +198,11 @@ export function App() {
       }
     });
 
-    // 4. Hexagon Details Protobuf response
+    // 6. Hexagon Details Protobuf response
     const unsubHexDetails = wsService.on('hexagon_details_response', (details) => {
       if (details) {
         setHexagonDetails(details);
 
-        // Sync detailed owner and leaderboard information into capturedHexagonsMap & runner cache
         if (details.state && details.state.h3_index) {
           const hexStr = h3Uint64ToHexString(details.state.h3_index);
           const topLeader = details.leaderboard && details.leaderboard.length > 0 ? details.leaderboard[0] : null;
@@ -193,7 +216,6 @@ export function App() {
           const finalOwnerColor = details.state.owner_color_hex || topLeader?.player_color_hex || getRunnerColor(rawOwnerId, details.state.owner_color_hex);
           const finalScore = details.state.top_score || topLeader?.uram_points || 0;
 
-          // Save to known runners cache
           if (rawOwnerId && finalOwnerName && finalOwnerName !== 'Бегун') {
             knownRunnersRef.current.set(String(rawOwnerId), {
               username: finalOwnerName,
@@ -217,22 +239,6 @@ export function App() {
                 }
               });
 
-              // Also update any other hexagons owned by this user
-              if (rawOwnerId && finalOwnerName) {
-                newMap.forEach((val, key) => {
-                  if (val.owner && String(val.owner.id) === String(rawOwnerId) && (!val.owner.name || val.owner.name === 'Бегун' || val.owner.name.startsWith('Атлет #'))) {
-                    newMap.set(key, {
-                      ...val,
-                      owner: {
-                        ...val.owner,
-                        name: finalOwnerName,
-                        color: finalOwnerColor
-                      }
-                    });
-                  }
-                });
-              }
-
               return newMap;
             });
           }
@@ -240,11 +246,10 @@ export function App() {
       }
     });
 
-    // 5. Hexagon Capture Realtime Pub/Sub Event
+    // 7. Hexagon Capture Realtime Pub/Sub Event
     const unsubCapture = wsService.on('hexagon_capture_event', (event) => {
       const hexStr = h3Uint64ToHexString(event.h3_index);
 
-      // Update captured hex in lookup map
       setCapturedHexagonsMap((prevMap) => {
         const newMap = new Map(prevMap);
         newMap.set(hexStr, {
@@ -255,18 +260,17 @@ export function App() {
           owner: {
             id: event.new_owner_id,
             name: event.new_owner_name || 'Бегун',
-            color: event.new_owner_color_hex || '#f97316',
+            color: event.new_owner_color_hex || '#fe4a09',
             club_name: 'URAM Club'
           }
         });
         return newMap;
       });
 
-      // Add to Live Ticker
       const tickerItem = {
         id: `cap-${Date.now()}-${hexStr}`,
         user: event.new_owner_name || 'Бегун',
-        clubColor: event.new_owner_color_hex || '#f97316',
+        clubColor: event.new_owner_color_hex || '#fe4a09',
         text: `Захватил гексагон #${hexStr.substring(0, 7)}...`,
         time: 'Только что (WS)',
         score: `+${event.score_at_capture || 400}`
@@ -274,22 +278,21 @@ export function App() {
       setTickerEvents((prev) => [tickerItem, ...prev.slice(0, 3)]);
     });
 
-    // Connect WebSocket
     wsService.connect();
 
     return () => {
       unsubStatus();
       unsubProfile();
+      unsubUserRuns();
+      unsubRunDetails();
       unsubViewport();
       unsubHexDetails();
       unsubCapture();
     };
   }, [authenticated]);
 
-  // Viewport change debouncer ref
-  const viewportDebounceTimer = React.useRef(null);
+  const viewportDebounceTimer = useRef(null);
 
-  // Handle Viewport changes from MapLibre camera move with smart debounce
   const handleViewportChange = useCallback(({ bounds }) => {
     if (!bounds || wsService.status !== 'connected') return;
 
@@ -302,7 +305,6 @@ export function App() {
     }, 250);
   }, []);
 
-  // Handle Hexagon Selection
   const handleHexagonSelect = (h3Index) => {
     setSelectedH3Index(h3Index);
     setHexagonDetails(null);
@@ -311,7 +313,6 @@ export function App() {
     }
   };
 
-  // Handle Landmark Navigation
   const handleSelectLandmark = (landmark) => {
     setSelectedLandmark(landmark);
     setCenterPosition({
@@ -321,17 +322,24 @@ export function App() {
     });
   };
 
-  // Handle Login
   const handleLoginSuccess = (authData) => {
     setAuthenticated(true);
     const user = getStoredUser();
     setUserProfile((prev) => ({
       ...prev,
-      username: user?.username || authData.user?.username || 'Бегун'
+      username: user?.username || authData.user?.username || 'smayflks',
+      avatar_url: '/app_icon_stylized_run_svg.svg',
+      team_name: 'Zilant Cyber-Runners',
+      team_tag: 'ZLT',
+      team_color_hex: '#fe4a09',
+      total_distance_meters: 184600,
+      total_duration_seconds: 54200,
+      total_runs: 16,
+      total_uram_points: 3380,
+      current_held_hexagons: 42
     }));
   };
 
-  // Handle Logout
   const handleLogout = () => {
     clearSession();
     wsService.disconnect();
@@ -339,9 +347,24 @@ export function App() {
     setUserProfile(null);
     setCapturedHexagonsMap(new Map());
     setSelectedH3Index(null);
+    setActiveRunRoute(null);
   };
 
-  // If not logged in, display full LoginPage first
+  // Run selection handler: opens RunDetailsModal or requests from WS
+  const handleSelectRun = (run) => {
+    if (wsService.status === 'connected' && run.run_id) {
+      wsService.requestRunDetails(run.run_id);
+    }
+    // Fallback / immediate data
+    setSelectedRunForModal(run);
+  };
+
+  // View route on main map
+  const handleViewRunOnMap = (run) => {
+    setActiveRunRoute(run);
+    setCurrentView('map');
+  };
+
   if (!authenticated) {
     return <LoginPage onLoginSuccess={handleLoginSuccess} />;
   }
@@ -349,48 +372,84 @@ export function App() {
   const capturedCount = Array.from(capturedHexagonsMap.values()).filter((h) => h.is_captured).length;
 
   return (
-    <div className="relative flex flex-col h-screen w-screen overflow-hidden bg-zinc-950">
-      {/* Top Header */}
-      <Header
-        selectedLandmark={selectedLandmark}
-        onSelectLandmark={handleSelectLandmark}
-        currentMapStyle={mapStyle}
-        onSelectMapStyle={setMapStyle}
-        onOpenProfile={() => setShowProfileModal(true)}
-        onLogout={handleLogout}
-        userProfile={userProfile}
-        wsStatus={wsStatus}
-        stats={{
-          hexCount: capturedHexagonsMap.size,
-          capturedCount: capturedCount
-        }}
+    <div className="flex h-screen w-screen overflow-hidden bg-[#f0f4f8]">
+      {/* 1. Tactical Command Sidebar Navigation */}
+      <SidebarNav
+        currentView={currentView}
+        onViewChange={setCurrentView}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
 
-      {/* Main Map with H3 Res=9 Grid */}
-      <div className="relative flex-1 w-full h-full overflow-hidden">
-        <MapContainer
-          capturedHexagonsMap={capturedHexagonsMap}
-          selectedH3Index={selectedH3Index}
-          onHexagonSelect={handleHexagonSelect}
-          centerPosition={centerPosition}
-          mapStyle={mapStyle}
-          onViewportChange={handleViewportChange}
+      {/* 2. Main Viewport Container */}
+      <div className="relative flex-1 flex flex-col h-full overflow-hidden">
+        {/* Top Tactical HUD Header */}
+        <Header
+          selectedLandmark={selectedLandmark}
+          onSelectLandmark={handleSelectLandmark}
+          onOpenProfile={() => setShowProfileModal(true)}
+          onLogout={handleLogout}
+          userProfile={userProfile}
+          wsStatus={wsStatus}
+          currentView={currentView}
+          stats={{
+            hexCount: capturedHexagonsMap.size,
+            capturedCount: capturedCount
+          }}
         />
 
-        {/* Selected Hexagon Protobuf Detail Drawer */}
-        {selectedH3Index && (
-          <HexagonDetailModal
-            h3Index={selectedH3Index}
-            onClose={() => {
-              setSelectedH3Index(null);
-              setHexagonDetails(null);
-            }}
-            detailsData={hexagonDetails}
-          />
-        )}
+        {/* View Switcher: Map Canvas | User Analytics | Faction Leaderboards */}
+        <div className="relative flex-1 w-full h-full overflow-hidden">
+          {/* MAP VIEW */}
+          <div className={`w-full h-full ${currentView === 'map' ? 'block' : 'hidden'}`}>
+            <MapContainer
+              capturedHexagonsMap={capturedHexagonsMap}
+              selectedH3Index={selectedH3Index}
+              onHexagonSelect={handleHexagonSelect}
+              centerPosition={centerPosition}
+              mapStyle="voyager"
+              onViewportChange={handleViewportChange}
+              activeRunRoute={activeRunRoute}
+              onClearActiveRunRoute={() => setActiveRunRoute(null)}
+            />
 
-        {/* Realtime Live Ticker */}
-        <LiveTicker events={tickerEvents} />
+            {/* Selected Hexagon Inspector Drawer */}
+            {selectedH3Index && (
+              <HexInspectorDrawer
+                h3Index={selectedH3Index}
+                onClose={() => {
+                  setSelectedH3Index(null);
+                  setHexagonDetails(null);
+                }}
+                detailsData={hexagonDetails}
+              />
+            )}
+
+            {/* Realtime Live Ticker */}
+            <LiveTicker events={tickerEvents} />
+          </div>
+
+          {/* USER ANALYTICS & RUN HISTORY VIEW */}
+          {currentView === 'analytics' && (
+            <UserAnalyticsView
+              userProfile={userProfile}
+              onOpenHexOnMap={(h3Idx) => {
+                setSelectedH3Index(h3Idx);
+                setCurrentView('map');
+              }}
+              onSelectRun={handleSelectRun}
+            />
+          )}
+
+          {/* FACTIONS & DISTRICT DOMINATION VIEW */}
+          {currentView === 'factions' && (
+            <FactionLeaderboardView
+              onSelectDistrict={(dist) => {
+                setCurrentView('map');
+              }}
+            />
+          )}
+        </div>
       </div>
 
       {/* User Profile Modal */}
@@ -399,6 +458,19 @@ export function App() {
         onClose={() => setShowProfileModal(false)}
         profileData={userProfile}
         onLogout={handleLogout}
+      />
+
+      {/* Run Details Modal */}
+      <RunDetailsModal
+        isOpen={Boolean(selectedRunForModal)}
+        onClose={() => setSelectedRunForModal(null)}
+        runData={selectedRunForModal}
+        onViewOnMap={handleViewRunOnMap}
+        onSelectHex={(hexStr) => {
+          setSelectedRunForModal(null);
+          setSelectedH3Index(hexStr);
+          setCurrentView('map');
+        }}
       />
     </div>
   );

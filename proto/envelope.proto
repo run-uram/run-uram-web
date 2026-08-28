@@ -6,6 +6,7 @@ import "telemetry.proto";
 import "events.proto";
 import "gamemap.proto";
 import "user.proto";
+import "history.proto";
 
 message Envelope {
   oneof payload {
@@ -29,5 +30,11 @@ message Envelope {
     // 4. Профиль и статистика
     user.GetUserProfileRequest get_user_profile_request = 12;
     user.UserProfileResponse user_profile_response = 13;
+
+    // 5. История пробежек и детали маршрутов
+    history.GetUserRunsRequest get_user_runs_request = 14;
+    history.GetUserRunsResponse get_user_runs_response = 15;
+    history.GetRunDetailsRequest get_run_details_request = 16;
+    history.GetRunDetailsResponse get_run_details_response = 17;
   }
 }

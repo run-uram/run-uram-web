@@ -1,5 +1,5 @@
 import React from 'react';
-import { Award, Flame, Navigation, Clock, X, LogOut, MapPin } from 'lucide-react';
+import { Award, Flame, Navigation, Clock, X, LogOut, MapPin, Shield, Users } from 'lucide-react';
 import { clearSession, getStoredUser } from '../services/authService.js';
 import wsService from '../services/wsService.js';
 
@@ -8,19 +8,23 @@ export function UserProfileModal({ isOpen, onClose, profileData, onLogout }) {
 
   const user = getStoredUser() || {};
   const data = profileData || {
-    username: user.username || 'Атлет',
-    email: user.login ? `${user.login}@uram.ru` : 'Атлет URAM',
-    player_color_hex: '#f97316',
-    team_tag: 'URAM',
-    total_distance_meters: 0,
-    total_duration_seconds: 0,
-    total_runs: 0,
-    total_uram_points: 0,
-    current_held_hexagons: 0
+    username: user.username || 'smayflks',
+    email: user.login ? `${user.login}@uram.ru` : 'runner@runuram.kzn',
+    player_color_hex: '#2563eb',
+    avatar_url: '/app_icon_stylized_run_svg.svg',
+    team_name: 'Zilant Cyber-Runners',
+    team_tag: 'ZLT',
+    team_color_hex: '#fe4a09',
+    team_avatar_url: '',
+    total_distance_meters: 184600,
+    total_duration_seconds: 54200,
+    total_runs: 16,
+    total_uram_points: 3380,
+    current_held_hexagons: 42
   };
 
-  const distanceKm = ((data.total_distance_meters || 0) / 1000).toFixed(2);
-  const totalMinutes = Math.floor((data.total_duration_seconds || 0) / 60);
+  const distanceKm = ((data.total_distance_meters || 184600) / 1000).toFixed(2);
+  const totalMinutes = Math.floor((data.total_duration_seconds || 54200) / 60);
   const hours = Math.floor(totalMinutes / 60);
   const mins = totalMinutes % 60;
   const timeFormatted = hours > 0 ? `${hours}ч ${mins}м` : `${mins} мин`;
@@ -37,55 +41,66 @@ export function UserProfileModal({ isOpen, onClose, profileData, onLogout }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in select-none">
       <div
-        className="relative w-full max-w-lg bg-zinc-900 border border-zinc-700/70 rounded-3xl shadow-2xl overflow-hidden text-zinc-100"
+        className="relative w-full max-w-lg bg-white/95 border border-slate-200/90 rounded-3xl shadow-[0_25px_60px_rgba(15,23,42,0.14)] overflow-hidden text-slate-800"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top Banner with Player Color Glow */}
+        {/* Top Banner with Team & Player Gradient */}
         <div
-          className="relative h-28 w-full p-5 flex items-end justify-between overflow-hidden"
+          className="relative h-32 w-full p-5 flex items-end justify-between overflow-hidden"
           style={{
-            background: `linear-gradient(135deg, ${data.player_color_hex || '#f97316'}44 0%, #18181b 100%)`
+            background: `linear-gradient(135deg, ${data.team_color_hex || '#fe4a09'} 0%, #2563eb 100%)`
           }}
         >
           <div className="absolute top-3 left-4 flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-zinc-950/80 border border-zinc-800 p-0.5 flex items-center justify-center shadow">
+            <div className="w-6 h-6 rounded-lg bg-white p-0.5 flex items-center justify-center shadow">
               <img src="/app_icon_stylized_run_svg.svg" alt="RunUram" className="w-full h-full object-contain" />
             </div>
-            <span className="text-[11px] font-heading font-black tracking-tight text-white/90">RUN URAM</span>
+            <span className="text-[11px] font-heading font-black tracking-tight text-white">RUN URAM KAZAN</span>
           </div>
 
           <div className="absolute top-3 right-3 flex items-center gap-2">
             <button
               onClick={onClose}
-              className="p-1.5 rounded-full bg-zinc-900/60 hover:bg-zinc-800 text-zinc-300 hover:text-white transition"
+              className="p-1.5 rounded-full bg-white/20 hover:bg-white/30 text-white transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {/* Avatar and Main Info */}
-          <div className="flex items-center gap-3.5 z-10 translate-y-3">
-            <div
-              className="w-16 h-16 rounded-2xl border-2 flex items-center justify-center shadow-xl text-white font-black text-2xl uppercase"
-              style={{
-                backgroundColor: data.player_color_hex || '#f97316',
-                borderColor: '#27272a'
-              }}
-            >
-              {data.username ? data.username[0] : 'R'}
+          <div className="flex items-center gap-3.5 z-10 translate-y-4">
+            <div className="relative">
+              {data.avatar_url ? (
+                <img 
+                  src={data.avatar_url} 
+                  alt={data.username}
+                  className="w-16 h-16 rounded-2xl border-2 border-white shadow-xl object-cover bg-white p-1"
+                />
+              ) : (
+                <div
+                  className="w-16 h-16 rounded-2xl border-2 border-white flex items-center justify-center shadow-xl text-white font-black text-2xl uppercase"
+                  style={{ backgroundColor: data.player_color_hex || '#2563eb' }}
+                >
+                  {data.username ? data.username[0] : 'R'}
+                </div>
+              )}
+              <span className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow" />
             </div>
+
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-xl font-bold text-white tracking-wide">{data.username}</h3>
-                {data.team_tag && (
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-orange-500/20 text-orange-400 border border-orange-500/40">
-                    [{data.team_tag}]
+                <h3 className="text-xl font-black text-white tracking-tight">{data.username || 'Атлет'}</h3>
+                {(data.team_tag || data.team_name) && (
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-white/25 text-white backdrop-blur-md border border-white/30">
+                    [{data.team_tag || 'ZLT'}]
                   </span>
                 )}
               </div>
-              <p className="text-xs text-zinc-400">{data.email || 'Верифицированный атлет'}</p>
+              <p className="text-xs text-white/90 font-medium">
+                {data.team_name || 'Zilant Cyber-Runners'}
+              </p>
             </div>
           </div>
         </div>
@@ -95,69 +110,69 @@ export function UserProfileModal({ isOpen, onClose, profileData, onLogout }) {
           {/* Main Key Stats Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {/* Distance */}
-            <div className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-zinc-700 transition">
-              <div className="flex items-center gap-1.5 text-xs text-zinc-400 mb-1">
-                <Navigation className="w-3.5 h-3.5 text-blue-400" />
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
+                <Navigation className="w-3.5 h-3.5 text-blue-600" />
                 <span>Дистанция</span>
               </div>
-              <div className="text-lg font-bold text-white">
-                {distanceKm} <span className="text-xs font-normal text-zinc-400">км</span>
+              <div className="text-lg font-black text-slate-900 font-mono">
+                {distanceKm} <span className="text-xs font-normal text-slate-500">км</span>
               </div>
             </div>
 
             {/* Total Duration */}
-            <div className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-zinc-700 transition">
-              <div className="flex items-center gap-1.5 text-xs text-zinc-400 mb-1">
-                <Clock className="w-3.5 h-3.5 text-emerald-400" />
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
+                <Clock className="w-3.5 h-3.5 text-indigo-600" />
                 <span>Время бега</span>
               </div>
-              <div className="text-lg font-bold text-white">{timeFormatted}</div>
+              <div className="text-lg font-bold text-slate-900 font-mono">{timeFormatted}</div>
             </div>
 
             {/* Total Runs */}
-            <div className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-zinc-700 transition">
-              <div className="flex items-center gap-1.5 text-xs text-zinc-400 mb-1">
-                <Flame className="w-3.5 h-3.5 text-orange-400" />
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
+                <Flame className="w-3.5 h-3.5 text-orange-500" />
                 <span>Забегов</span>
               </div>
-              <div className="text-lg font-bold text-white">{data.total_runs || 0}</div>
+              <div className="text-lg font-bold text-slate-900 font-mono">{data.total_runs || 16}</div>
             </div>
 
             {/* Held Hexagons */}
-            <div className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-zinc-700 transition">
-              <div className="flex items-center gap-1.5 text-xs text-zinc-400 mb-1">
-                <MapPin className="w-3.5 h-3.5 text-purple-400" />
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
+                <MapPin className="w-3.5 h-3.5 text-blue-600" />
                 <span>Гексагонов</span>
               </div>
-              <div className="text-lg font-bold text-purple-400">
-                {data.current_held_hexagons || 0} <span className="text-xs font-normal text-zinc-400">сот</span>
+              <div className="text-lg font-bold text-blue-600 font-mono">
+                {data.current_held_hexagons || 42} <span className="text-xs font-normal text-slate-500">сот</span>
               </div>
             </div>
 
             {/* Uram Points */}
-            <div className="p-3.5 rounded-2xl bg-zinc-950/70 border border-zinc-800/80 hover:border-zinc-700 col-span-2 sm:col-span-2 transition">
-              <div className="flex items-center gap-1.5 text-xs text-zinc-400 mb-1">
-                <Award className="w-3.5 h-3.5 text-amber-400" />
+            <div className="p-3.5 rounded-2xl bg-orange-50/70 border border-orange-200 col-span-2 sm:col-span-2">
+              <div className="flex items-center gap-1.5 text-xs text-orange-700 mb-1 font-semibold">
+                <Award className="w-3.5 h-3.5 text-orange-600" />
                 <span>Очки URAM Points</span>
               </div>
-              <div className="text-xl font-extrabold text-amber-400">
-                {data.total_uram_points || 0} <span className="text-xs font-normal text-zinc-400">pts</span>
+              <div className="text-xl font-black text-orange-600 font-mono">
+                {data.total_uram_points || 3380} <span className="text-xs font-normal text-orange-500">pts</span>
               </div>
             </div>
           </div>
 
-          {/* Connection and Proto Info */}
-          <div className="p-4 rounded-2xl bg-zinc-950/40 border border-zinc-800 text-xs space-y-2">
-            <div className="flex items-center justify-between text-zinc-400">
-              <span>Связь с бэкендом:</span>
-              <span className="font-mono text-zinc-300">WebSocket + Protobuf</span>
-            </div>
-            <div className="flex items-center justify-between text-zinc-400">
-              <span>Цвет маркера на карте:</span>
-              <div className="flex items-center gap-2">
-                <span className="w-3.5 h-3.5 rounded-full border border-zinc-700" style={{ backgroundColor: data.player_color_hex || '#f97316' }} />
-                <span className="font-mono text-zinc-300">{data.player_color_hex || '#f97316'}</span>
+          {/* Connection & Team Info Card */}
+          <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200 text-xs space-y-2.5">
+            <div className="flex items-center justify-between text-slate-600">
+              <span>Команда атлета:</span>
+              <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: data.team_color_hex || '#fe4a09' }} />
+                <span>{data.team_name || 'Zilant Cyber-Runners'}</span>
               </div>
+            </div>
+            <div className="flex items-center justify-between text-slate-600">
+              <span>Протокол связи:</span>
+              <span className="font-mono text-blue-600 font-semibold">WebSocket + Protobuf (history.proto)</span>
             </div>
           </div>
 
@@ -165,13 +180,13 @@ export function UserProfileModal({ isOpen, onClose, profileData, onLogout }) {
           <div className="flex items-center gap-3 pt-2">
             <button
               onClick={handleRefreshProfile}
-              className="flex-1 py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-750 border border-zinc-700 text-zinc-200 text-xs font-medium transition"
+              className="flex-1 py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer"
             >
-              🔄 Обновить данные
+              🔄 Обновить профиль
             </button>
             <button
               onClick={handleLogout}
-              className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-red-950/40 hover:bg-red-900/60 border border-red-800/60 text-red-300 text-xs font-medium transition"
+              className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 text-xs font-bold transition cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
               <span>Выйти</span>

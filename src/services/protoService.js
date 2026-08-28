@@ -151,7 +151,7 @@ package user;
 import "common.proto";
 
 message GetUserProfileRequest {
-  uint64 user_id = 1;
+  uint64 user_id = 1; // 0 = запросить свой собственный профиль
 }
 
 message UserProfileResponse {
@@ -160,14 +160,62 @@ message UserProfileResponse {
   string username = 3;
   string email = 4;
   string player_color_hex = 5;
-  uint64 team_id = 6;
-  string team_tag = 7;
-  
-  double total_distance_meters = 8;
-  int64 total_duration_seconds = 9;
-  int32 total_runs = 10;
-  int32 total_uram_points = 11;
-  int32 current_held_hexagons = 12;
+  string avatar_url = 6;
+
+  // Информация о команде
+  uint64 team_id = 7;
+  string team_name = 8;
+  string team_tag = 9;
+  string team_color_hex = 10;
+  string team_avatar_url = 11;
+
+  // Агрегированная статистика бегуна
+  double total_distance_meters = 12;
+  int64 total_duration_seconds = 13;
+  int32 total_runs = 14;
+  int32 total_uram_points = 15;
+  int32 current_held_hexagons = 16;
+}
+`;
+
+const historyProto = `
+syntax = "proto3";
+package history;
+
+import "common.proto";
+import "location.proto";
+
+message RunSummary {
+  uint64 run_id = 1;
+  string status = 2;
+  double total_distance_meters = 3;
+  int64 total_duration_seconds = 4;
+  int32 uram_points_earned = 5;
+  int64 started_at = 6;
+  int64 finished_at = 7;
+}
+
+message GetUserRunsRequest {
+  uint64 user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message GetUserRunsResponse {
+  common.Status status = 1;
+  repeated RunSummary runs = 2;
+  int32 total_count = 3;
+}
+
+message GetRunDetailsRequest {
+  uint64 run_id = 1;
+}
+
+message GetRunDetailsResponse {
+  common.Status status = 1;
+  RunSummary summary = 2;
+  repeated location.LocationPoint route_points = 3;
+  repeated uint64 captured_h3_indices = 4;
 }
 `;
 
@@ -179,6 +227,7 @@ import "telemetry.proto";
 import "events.proto";
 import "gamemap.proto";
 import "user.proto";
+import "history.proto";
 
 message Envelope {
   oneof payload {
@@ -198,6 +247,11 @@ message Envelope {
 
     user.GetUserProfileRequest get_user_profile_request = 12;
     user.UserProfileResponse user_profile_response = 13;
+
+    history.GetUserRunsRequest get_user_runs_request = 14;
+    history.GetUserRunsResponse get_user_runs_response = 15;
+    history.GetRunDetailsRequest get_run_details_request = 16;
+    history.GetRunDetailsResponse get_run_details_response = 17;
   }
 }
 `;
@@ -212,6 +266,7 @@ protobuf.parse(telemetryProto, root, { keepCase: true });
 protobuf.parse(eventsProto, root, { keepCase: true });
 protobuf.parse(gamemapProto, root, { keepCase: true });
 protobuf.parse(userProto, root, { keepCase: true });
+protobuf.parse(historyProto, root, { keepCase: true });
 protobuf.parse(envelopeProto, root, { keepCase: true });
 
 // Lookup Envelope Message Type
@@ -256,7 +311,6 @@ export function h3Uint64ToHexString(val) {
     return val.toString(16).toLowerCase();
   }
   if (typeof val === 'string') {
-    // If it's already 15-16 char hex
     if (/^[0-9a-fA-F]{15,16}$/.test(val)) return val.toLowerCase();
     try {
       return BigInt(val).toString(16).toLowerCase();
