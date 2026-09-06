@@ -5,7 +5,6 @@ import { SidebarNav } from './components/SidebarNav.jsx';
 import { MapContainer } from './components/MapContainer.jsx';
 import { HexInspectorDrawer } from './components/HexInspectorDrawer.jsx';
 import { UserAnalyticsView } from './components/UserAnalyticsView.jsx';
-import { FactionLeaderboardView } from './components/FactionLeaderboardView.jsx';
 import { UserProfileModal } from './components/UserProfileModal.jsx';
 import { RunDetailsModal } from './components/RunDetailsModal.jsx';
 import { LiveTicker } from './components/LiveTicker.jsx';
@@ -45,6 +44,7 @@ export function App() {
   const [authenticated, setAuthenticated] = useState(isAuthenticated());
   const [userProfile, setUserProfile] = useState(null);
   const [wsStatus, setWsStatus] = useState(wsService.status);
+  const [wsLatency, setWsLatency] = useState(null);
 
   // App Navigation
   const [currentView, setCurrentView] = useState('map'); // 'map' | 'analytics' | 'factions'
@@ -63,6 +63,7 @@ export function App() {
   const [capturedHexagonsMap, setCapturedHexagonsMap] = useState(new Map());
   const [selectedH3Index, setSelectedH3Index] = useState(null);
   const [hexagonDetails, setHexagonDetails] = useState(null);
+  const [latestCapture, setLatestCapture] = useState(null);
 
   // Run Details & History State
   const [selectedRunForModal, setSelectedRunForModal] = useState(null);
@@ -70,24 +71,72 @@ export function App() {
 
   // Modals & events
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [activeProfileModalData, setActiveProfileModalData] = useState(null);
+  const [isViewingOwnProfile, setIsViewingOwnProfile] = useState(true);
   const [tickerEvents, setTickerEvents] = useState([]);
+
+  // Open player profile handler (0 = own, or any runner user_id)
+  const handleOpenProfile = (userId = 0) => {
+    if (!userId || userId === 0 || (userProfile && String(userId) === String(userProfile.user_id))) {
+      setIsViewingOwnProfile(true);
+      setActiveProfileModalData(userProfile);
+      setShowProfileModal(true);
+      if (wsService.status === 'connected') {
+        wsService.requestUserProfile(0);
+      }
+    } else {
+      setIsViewingOwnProfile(false);
+      const cached = knownRunnersRef.current.get(String(userId));
+      setActiveProfileModalData({
+        user_id: userId,
+        username: cached?.username || `Атлет #${userId}`,
+        player_color_hex: cached?.color || getRunnerColor(userId),
+        team_name: 'URAM Team',
+        team_tag: 'URAM',
+        team_color_hex: cached?.color || getRunnerColor(userId),
+        total_distance_meters: 0,
+        total_duration_seconds: 0,
+        total_runs: 0,
+        total_uram_points: 0,
+        current_held_hexagons: 0
+      });
+      setShowProfileModal(true);
+      if (wsService.status === 'connected') {
+        wsService.requestUserProfile(userId);
+      }
+    }
+  };
 
   // WebSocket listeners and lifecycle
   useEffect(() => {
     if (!authenticated) return;
 
-    // 1. Connection status
+    // 1. Connection status & latency
     const unsubStatus = wsService.on('status', ({ status }) => {
       setWsStatus(status);
+    });
+
+    const unsubLatency = wsService.on('latency', (latency) => {
+      setWsLatency(latency);
     });
 
     // 2. UserProfile Protobuf response
     const unsubProfile = wsService.on('user_profile_response', (profile) => {
       if (profile) {
+        console.log('[WebSocket] Received user profile:', profile);
         setUserProfile((prev) => ({
           ...prev,
           ...profile
         }));
+
+        setActiveProfileModalData((prev) => {
+          if (!prev) return profile;
+          if (!profile.user_id || String(profile.user_id) === String(prev.user_id)) {
+            return { ...prev, ...profile };
+          }
+          return prev;
+        });
+
         if (profile.user_id && profile.username) {
           knownRunnersRef.current.set(String(profile.user_id), {
             username: profile.username,
@@ -117,7 +166,7 @@ export function App() {
       }
     });
 
-    // 5. Viewport Protobuf response
+    // 5. Viewport Protobuf response (2.1)
     const unsubViewport = wsService.on('subscribe_viewport_response', (resp) => {
       if (resp && resp.hexagons) {
         if (resp.hexagons.length === 0) return;
@@ -198,7 +247,7 @@ export function App() {
       }
     });
 
-    // 6. Hexagon Details Protobuf response
+    // 6. Hexagon Details Protobuf response (2.3)
     const unsubHexDetails = wsService.on('hexagon_details_response', (details) => {
       if (details) {
         setHexagonDetails(details);
@@ -246,42 +295,53 @@ export function App() {
       }
     });
 
-    // 7. Hexagon Capture Realtime Pub/Sub Event
+    // 7. Hexagon Capture Realtime Pub/Sub Event (2.2)
     const unsubCapture = wsService.on('hexagon_capture_event', (event) => {
       const hexStr = h3Uint64ToHexString(event.h3_index);
+      const newColor = event.new_owner_color_hex || '#fe4a09';
+      const runnerName = event.new_owner_name || 'Бегун';
+      const score = event.score_at_capture || 400;
 
       setCapturedHexagonsMap((prevMap) => {
         const newMap = new Map(prevMap);
         newMap.set(hexStr, {
           h3_index: hexStr,
           is_captured: true,
-          score: event.score_at_capture || 400,
-          top_score: event.score_at_capture || 400,
+          score: score,
+          top_score: score,
           owner: {
             id: event.new_owner_id,
-            name: event.new_owner_name || 'Бегун',
-            color: event.new_owner_color_hex || '#fe4a09',
-            club_name: 'URAM Club'
+            name: runnerName,
+            color: newColor,
+            club_name: 'URAM Team'
           }
         });
         return newMap;
       });
 
+      // Trigger realtime map pulse/flash animation on the captured hexagon
+      setLatestCapture({
+        h3Index: hexStr,
+        color: newColor,
+        timestamp: Date.now()
+      });
+
       const tickerItem = {
         id: `cap-${Date.now()}-${hexStr}`,
-        user: event.new_owner_name || 'Бегун',
-        clubColor: event.new_owner_color_hex || '#fe4a09',
-        text: `Захватил гексагон #${hexStr.substring(0, 7)}...`,
-        time: 'Только что (WS)',
-        score: `+${event.score_at_capture || 400}`
+        user: runnerName,
+        clubColor: newColor,
+        text: `захватил сектор #${hexStr.substring(0, 8)}...`,
+        time: 'Только что (Live)',
+        score: `+${score} PTS`
       };
-      setTickerEvents((prev) => [tickerItem, ...prev.slice(0, 3)]);
+      setTickerEvents((prev) => [tickerItem, ...prev.slice(0, 4)]);
     });
 
     wsService.connect();
 
     return () => {
       unsubStatus();
+      unsubLatency();
       unsubProfile();
       unsubUserRuns();
       unsubRunDetails();
@@ -325,19 +385,19 @@ export function App() {
   const handleLoginSuccess = (authData) => {
     setAuthenticated(true);
     const user = getStoredUser();
-    setUserProfile((prev) => ({
-      ...prev,
-      username: user?.username || authData.user?.username || 'smayflks',
-      avatar_url: '/app_icon_stylized_run_svg.svg',
-      team_name: 'Zilant Cyber-Runners',
-      team_tag: 'ZLT',
-      team_color_hex: '#fe4a09',
-      total_distance_meters: 184600,
-      total_duration_seconds: 54200,
-      total_runs: 16,
-      total_uram_points: 3380,
-      current_held_hexagons: 42
-    }));
+    const loginName = user?.username || authData.user?.username || authData.user?.login || 'Атлет';
+    setUserProfile({
+      username: loginName,
+      player_color_hex: getRunnerColor(user?.id || 0),
+      total_distance_meters: 0,
+      total_duration_seconds: 0,
+      total_runs: 0,
+      total_uram_points: 0,
+      current_held_hexagons: 0
+    });
+    if (wsService.status === 'connected') {
+      wsService.requestUserProfile(0);
+    }
   };
 
   const handleLogout = () => {
@@ -345,6 +405,7 @@ export function App() {
     wsService.disconnect();
     setAuthenticated(false);
     setUserProfile(null);
+    setActiveProfileModalData(null);
     setCapturedHexagonsMap(new Map());
     setSelectedH3Index(null);
     setActiveRunRoute(null);
@@ -355,7 +416,6 @@ export function App() {
     if (wsService.status === 'connected' && run.run_id) {
       wsService.requestRunDetails(run.run_id);
     }
-    // Fallback / immediate data
     setSelectedRunForModal(run);
   };
 
@@ -387,10 +447,11 @@ export function App() {
         <Header
           selectedLandmark={selectedLandmark}
           onSelectLandmark={handleSelectLandmark}
-          onOpenProfile={() => setShowProfileModal(true)}
+          onOpenProfile={() => handleOpenProfile(0)}
           onLogout={handleLogout}
           userProfile={userProfile}
           wsStatus={wsStatus}
+          wsLatency={wsLatency}
           currentView={currentView}
           stats={{
             hexCount: capturedHexagonsMap.size,
@@ -411,6 +472,7 @@ export function App() {
               onViewportChange={handleViewportChange}
               activeRunRoute={activeRunRoute}
               onClearActiveRunRoute={() => setActiveRunRoute(null)}
+              latestCapture={latestCapture}
             />
 
             {/* Selected Hexagon Inspector Drawer */}
@@ -422,6 +484,7 @@ export function App() {
                   setHexagonDetails(null);
                 }}
                 detailsData={hexagonDetails}
+                onSelectRunner={(runnerUserId) => handleOpenProfile(runnerUserId)}
               />
             )}
 
@@ -429,7 +492,7 @@ export function App() {
             <LiveTicker events={tickerEvents} />
           </div>
 
-          {/* USER ANALYTICS & RUN HISTORY VIEW */}
+          {/* USER ANALYTICS VIEW */}
           {currentView === 'analytics' && (
             <UserAnalyticsView
               userProfile={userProfile}
@@ -440,23 +503,15 @@ export function App() {
               onSelectRun={handleSelectRun}
             />
           )}
-
-          {/* FACTIONS & DISTRICT DOMINATION VIEW */}
-          {currentView === 'factions' && (
-            <FactionLeaderboardView
-              onSelectDistrict={(dist) => {
-                setCurrentView('map');
-              }}
-            />
-          )}
         </div>
       </div>
 
-      {/* User Profile Modal */}
+      {/* User / Runner Profile Modal */}
       <UserProfileModal
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}
-        profileData={userProfile}
+        profileData={activeProfileModalData || userProfile}
+        isOwnProfile={isViewingOwnProfile}
         onLogout={handleLogout}
       />
 
@@ -477,3 +532,4 @@ export function App() {
 }
 
 export default App;
+

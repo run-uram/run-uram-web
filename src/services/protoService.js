@@ -86,6 +86,14 @@ message FinishRunResponse {
   uint32 hexes_claimed_count = 5;
   uint32 total_score = 6;
 }
+
+message PingMessage {
+  int64 timestamp = 1;
+}
+
+message PongMessage {
+  int64 timestamp = 1;
+}
 `;
 
 const gamemapProto = `
@@ -227,31 +235,28 @@ import "telemetry.proto";
 import "events.proto";
 import "gamemap.proto";
 import "user.proto";
-import "history.proto";
 
 message Envelope {
   oneof payload {
-    telemetry.LocationBatch location_frame = 1;
-    telemetry.LocationBatchAck location_frame_ack = 2;
+    events.PingMessage ping = 1;
+    events.PongMessage pong = 2;
 
-    events.StartRunRequest start_run_request = 3;
-    events.StartRunResponse start_run_response = 4;
-    events.FinishRunRequest finish_run_request = 5;
-    events.FinishRunResponse finish_run_response = 6;
+    telemetry.LocationBatch location_frame = 3;
+    telemetry.LocationBatchAck location_frame_ack = 4;
 
-    gamemap.SubscribeViewportRequest subscribe_viewport_request = 7;
-    gamemap.SubscribeViewportResponse subscribe_viewport_response = 8;
-    gamemap.HexagonCaptureEvent hexagon_capture_event = 9;
-    gamemap.GetHexagonDetailsRequest get_hexagon_details_request = 10;
-    gamemap.HexagonDetailsResponse hexagon_details_response = 11;
+    events.StartRunRequest start_run_request = 5;
+    events.StartRunResponse start_run_response = 6;
+    events.FinishRunRequest finish_run_request = 7;
+    events.FinishRunResponse finish_run_response = 8;
 
-    user.GetUserProfileRequest get_user_profile_request = 12;
-    user.UserProfileResponse user_profile_response = 13;
+    gamemap.SubscribeViewportRequest subscribe_viewport_request = 9;
+    gamemap.SubscribeViewportResponse subscribe_viewport_response = 10;
+    gamemap.HexagonCaptureEvent hexagon_capture_event = 11;
+    gamemap.GetHexagonDetailsRequest get_hexagon_details_request = 12;
+    gamemap.HexagonDetailsResponse hexagon_details_response = 13;
 
-    history.GetUserRunsRequest get_user_runs_request = 14;
-    history.GetUserRunsResponse get_user_runs_response = 15;
-    history.GetRunDetailsRequest get_run_details_request = 16;
-    history.GetRunDetailsResponse get_run_details_response = 17;
+    user.GetUserProfileRequest get_user_profile_request = 14;
+    user.UserProfileResponse user_profile_response = 15;
   }
 }
 `;
@@ -295,7 +300,7 @@ export function decodeEnvelope(buffer) {
     longs: String,
     enums: String,
     bytes: String,
-    defaults: true,
+    defaults: false,
     arrays: true,
     objects: true,
     oneofs: true

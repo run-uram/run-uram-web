@@ -1,6 +1,6 @@
 import React from 'react';
 import { LogOut, WifiOff, MapPin, Zap, Shield, Trophy } from 'lucide-react';
-import { KAZAN_LANDMARKS, FACTIONS } from '../services/mockData.js';
+import { KAZAN_LANDMARKS } from '../services/mockData.js';
 
 export function Header({
   selectedLandmark,
@@ -9,6 +9,7 @@ export function Header({
   onLogout,
   userProfile,
   wsStatus,
+  wsLatency,
   stats,
   currentView
 }) {
@@ -16,9 +17,14 @@ export function Header({
     switch (wsStatus) {
       case 'connected':
         return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-mono shadow-xs" title="WebSocket + Protobuf подключен">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-mono shadow-xs" title="WebSocket + Protobuf подключен (Heartbeat 20s)">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             <span className="font-bold">LIVE TELEMETRY</span>
+            {wsLatency !== null && wsLatency !== undefined && (
+              <span className="text-[10px] text-emerald-600 font-bold bg-emerald-100/80 px-1 py-0.2 rounded">
+                {wsLatency}ms
+              </span>
+            )}
           </div>
         );
       case 'connecting':
@@ -68,33 +74,9 @@ export function Header({
             <span className="text-xs font-mono text-blue-600 font-bold px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200">
               KAZAN TACTICAL GRID
             </span>
-            <span className="text-xs text-slate-500 font-medium hidden sm:inline">Личные показатели и история маршрутов</span>
+            <span className="text-xs text-slate-500 font-medium hidden sm:inline">Личные показатели и телеметрия атлета</span>
           </div>
         )}
-
-        {currentView === 'factions' && (
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-mono text-purple-600 font-bold px-2.5 py-0.5 rounded-full bg-purple-50 border border-purple-200">
-              TERRITORY DOMINANCE
-            </span>
-            <span className="text-xs text-slate-500 font-medium hidden sm:inline">Сводная статистика войны за районы</span>
-          </div>
-        )}
-      </div>
-
-      {/* Center Tactical Balance Strip (City Hex Share) */}
-      <div className="hidden md:flex items-center gap-3 px-3.5 py-1.5 rounded-2xl border border-slate-200/90 bg-slate-50/80 text-xs font-mono shadow-xs">
-        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Баланс сил:</span>
-        <div className="flex items-center gap-2.5">
-          {FACTIONS.map((faction) => (
-            <div key={faction.id} className="flex items-center gap-1" title={`${faction.name}: ${faction.percent}%`}>
-              <span className="text-xs">{faction.icon}</span>
-              <span className="font-black text-[11px]" style={{ color: faction.color }}>
-                {faction.percent}%
-              </span>
-            </div>
-          ))}
-        </div>
       </div>
 
       {/* Right Area: Telemetry Status, Profile & Controls */}
@@ -123,10 +105,10 @@ export function Header({
           )}
           <div className="text-left hidden sm:block">
             <div className="text-xs font-bold text-slate-900 leading-tight group-hover:text-blue-600 transition">
-              {userProfile?.username || 'smayflks'}
+              {userProfile?.username || 'Атлет'}
             </div>
             <div className="text-[10px] text-orange-600 font-mono font-bold leading-none">
-              {userProfile?.total_uram_points !== undefined ? `${userProfile.total_uram_points} pts` : '3380 pts'}
+              {userProfile?.total_uram_points !== undefined ? `${userProfile.total_uram_points} pts` : '0 pts'}
             </div>
           </div>
         </button>

@@ -1,19 +1,19 @@
 import React from 'react';
-import { 
-  Map as MapIcon, 
-  BarChart3, 
-  ShieldAlert, 
-  ChevronLeft, 
+import {
+  Map as MapIcon,
+  BarChart3,
+  ShieldAlert,
+  ChevronLeft,
   ChevronRight,
   Award,
   Zap
 } from 'lucide-react';
 
-export function SidebarNav({ 
-  currentView, 
-  onViewChange, 
-  isCollapsed, 
-  onToggleCollapse 
+export function SidebarNav({
+  currentView,
+  onViewChange,
+  isCollapsed,
+  onToggleCollapse
 }) {
   const navItems = [
     {
@@ -26,27 +26,18 @@ export function SidebarNav({
     },
     {
       id: 'analytics',
-      label: 'Аналитика атлета',
-      subtitle: 'Telemetry & Routes',
+      label: 'Личная статистика',
+      subtitle: 'Telemetry & Stats',
       icon: BarChart3,
-      badge: '+14%',
+      badge: 'PRO',
       badgeColor: 'bg-blue-50 text-blue-600 border-blue-200'
-    },
-    {
-      id: 'factions',
-      label: 'Фракции & Районы',
-      subtitle: 'District Domination',
-      icon: ShieldAlert,
-      badge: 'WAR',
-      badgeColor: 'bg-purple-50 text-purple-600 border-purple-200'
     }
   ];
 
   return (
-    <aside 
-      className={`relative flex flex-col justify-between h-full border-r border-slate-200/90 bg-white/95 backdrop-blur-xl transition-all duration-300 z-30 select-none shadow-xs ${
-        isCollapsed ? 'w-20' : 'w-64'
-      }`}
+    <aside
+      className={`relative flex flex-col justify-between h-full border-r border-slate-200/90 bg-white/95 backdrop-blur-xl transition-all duration-300 z-30 select-none shadow-xs ${isCollapsed ? 'w-20' : 'w-64'
+        }`}
     >
       {/* Top Branding Section */}
       <div className="p-4 flex flex-col gap-6">
@@ -89,11 +80,10 @@ export function SidebarNav({
               <button
                 key={item.id}
                 onClick={() => onViewChange(item.id)}
-                className={`relative flex items-center gap-3 w-full p-3 rounded-2xl transition-all text-left cursor-pointer ${
-                  isActive
+                className={`relative flex items-center gap-3 w-full p-3 rounded-2xl transition-all text-left cursor-pointer ${isActive
                     ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/20'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent'
-                }`}
+                  }`}
               >
                 <div className={`p-2 rounded-xl ${isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
                   <Icon size={18} />
@@ -106,9 +96,8 @@ export function SidebarNav({
                         {item.label}
                       </span>
                       {item.badge && (
-                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md border ${
-                          isActive ? 'bg-white/20 text-white border-white/20' : item.badgeColor
-                        }`}>
+                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md border ${isActive ? 'bg-white/20 text-white border-white/20' : item.badgeColor
+                          }`}>
                           {item.badge}
                         </span>
                       )}
@@ -124,23 +113,20 @@ export function SidebarNav({
         </nav>
       </div>
 
-      {/* Bottom Controls (Faction Summary Card) */}
+      {/* Bottom Controls (Active Status) */}
       <div className="p-4 border-t border-slate-200/90 flex flex-col gap-3">
         {!isCollapsed ? (
-          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-orange-50 to-amber-50 border border-orange-200 flex items-center justify-between shadow-xs">
-            <div className="flex items-center gap-2.5">
-              <div className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-ping" />
-              <div className="flex flex-col">
-                <span className="text-[11px] font-bold text-slate-900">Zilant Cyber</span>
-                <span className="text-[10px] text-orange-600 font-mono font-bold">482 Hexes (44.2%)</span>
-              </div>
+          <div className="p-3 rounded-2xl bg-blue-50/70 border border-blue-200 flex items-center gap-2.5 shadow-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <div className="flex flex-col">
+              <span className="text-[11px] font-bold text-slate-900">Kazan Grid Live</span>
+              <span className="text-[10px] text-blue-600 font-mono font-medium">Uber H3 Res 9</span>
             </div>
-            <Award size={16} className="text-orange-500" />
           </div>
         ) : (
           <div className="flex justify-center">
-            <div className="p-2 rounded-xl bg-orange-50 text-orange-500">
-              <Award size={18} />
+            <div className="p-2 rounded-xl bg-blue-50 text-blue-600">
+              <Zap size={18} />
             </div>
           </div>
         )}

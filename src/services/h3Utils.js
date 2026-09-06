@@ -32,6 +32,18 @@ export function getH3Index(lat, lng, resolution = DEFAULT_H3_RESOLUTION) {
 }
 
 /**
+ * Get center coordinates { lat, lng } for an H3 cell
+ */
+export function getH3Center(h3Index) {
+  try {
+    const [lat, lng] = h3.cellToLatLng(h3Index);
+    return { lat, lng };
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
  * Convert an H3 Cell Index to GeoJSON Polygon coordinates [[lng, lat], ...]
  * Result is cached in memory.
  */

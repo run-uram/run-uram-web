@@ -16,6 +16,8 @@ class WebSocketService {
     this.manualDisconnect = false;
     this.lastError = null;
     this.activeSubscribedBox = null;
+    this.pingInterval = null;
+    this.latencyMs = null;
   }
 
   /**
@@ -94,6 +96,9 @@ class WebSocketService {
         this.setStatus('connected');
         console.log('%c✅ WebSocket Connected via Protobuf Envelope', 'color: #10b981; font-weight: bold; font-size: 13px;');
 
+        // Start 20-second Heartbeat ping timer
+        this.startHeartbeat(20000);
+
         // Automatically fetch own user profile on connect
         this.requestUserProfile(0);
       };
@@ -111,6 +116,7 @@ class WebSocketService {
 
       this.ws.onclose = (event) => {
         console.log(`%c🔌 WebSocket Closed (code ${event.code}, reason: ${event.reason || 'none'})`, 'color: #f59e0b;');
+        this.stopHeartbeat();
         this.ws = null;
         if (!this.manualDisconnect) {
           this.setStatus('disconnected');
@@ -122,6 +128,7 @@ class WebSocketService {
 
       this.ws.onerror = (err) => {
         console.warn('⚠️ WebSocket Error:', err);
+        this.stopHeartbeat();
         this.setStatus('error', err);
       };
     } catch (err) {
@@ -135,16 +142,31 @@ class WebSocketService {
    * Dispatch parsed Protobuf Envelope to listeners
    */
   handleIncomingEnvelope(envelope) {
+    if (!envelope || typeof envelope !== 'object') return;
+
     this.emit('envelope', envelope);
+
+    // Heartbeat Pong response
+    if (envelope.pong && envelope.pong.timestamp !== undefined) {
+      const sentTs = Number(envelope.pong.timestamp);
+      const latency = (sentTs > 0 && Date.now() >= sentTs) ? Math.max(0, Date.now() - sentTs) : 0;
+      this.latencyMs = latency;
+      this.emit('pong', { timestamp: sentTs, latency });
+      this.emit('latency', latency);
+    }
+
+    // In case server sends ping to client
+    if (envelope.ping && envelope.ping.timestamp !== undefined && !envelope.pong) {
+      const pingTs = Number(envelope.ping.timestamp) || Date.now();
+      this.sendEnvelope({
+        pong: {
+          timestamp: pingTs
+        }
+      });
+    }
 
     if (envelope.user_profile_response) {
       this.emit('user_profile_response', envelope.user_profile_response);
-    }
-    if (envelope.get_user_runs_response) {
-      this.emit('get_user_runs_response', envelope.get_user_runs_response);
-    }
-    if (envelope.get_run_details_response) {
-      this.emit('get_run_details_response', envelope.get_run_details_response);
     }
     if (envelope.subscribe_viewport_response) {
       this.emit('subscribe_viewport_response', envelope.subscribe_viewport_response);
@@ -185,6 +207,36 @@ class WebSocketService {
       console.error('Failed to encode and send envelope:', err);
       return false;
     }
+  }
+
+  /**
+   * Heartbeat: Start sending periodic Ping messages (every 15-30s)
+   */
+  startHeartbeat(intervalMs = 20000) {
+    this.stopHeartbeat();
+    this.pingInterval = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.sendPing();
+      }
+    }, intervalMs);
+  }
+
+  stopHeartbeat() {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+  }
+
+  /**
+   * Send Ping Heartbeat Message
+   */
+  sendPing(timestamp = Date.now()) {
+    return this.sendEnvelope({
+      ping: {
+        timestamp: timestamp
+      }
+    });
   }
 
   /**
@@ -362,6 +414,7 @@ class WebSocketService {
   disconnect() {
     this.manualDisconnect = true;
     this.activeSubscribedBox = null;
+    this.stopHeartbeat();
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.ws) {
       this.ws.close();

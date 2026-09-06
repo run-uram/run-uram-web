@@ -10,7 +10,10 @@ import {
   Zap, 
   TrendingUp, 
   Users,
-  Timer
+  Timer,
+  Footprints,
+  User,
+  ChevronRight
 } from 'lucide-react';
 import { h3Uint64ToHexString } from '../services/protoService.js';
 
@@ -18,7 +21,8 @@ export function HexInspectorDrawer({
   h3Index, 
   onClose, 
   detailsData,
-  onFlyToHex
+  onFlyToHex,
+  onSelectRunner
 }) {
   const displayHexStr = typeof h3Index === 'string' 
     ? h3Index 
@@ -29,9 +33,9 @@ export function HexInspectorDrawer({
   const leaderboard = detailsData?.leaderboard || [];
 
   const rawOwner = state?.owner_username || 'Не захвачен';
-  const isCaptured = Boolean(state?.owner_username || (state?.owner_user_id && state?.owner_user_id !== '0'));
+  const isCaptured = Boolean(state?.owner_username || (state?.owner_user_id && state?.owner_user_id !== '0') || leaderboard.length > 0);
   const ownerColor = state?.owner_color_hex || (isCaptured ? '#fe4a09' : '#94a3b8');
-  const topScore = state?.top_score || 0;
+  const topScore = state?.top_score || (leaderboard.length > 0 ? leaderboard[0].uram_points : 0);
 
   // Determine faction styling based on color or name
   let factionName = 'Нейтральная зона';
@@ -56,9 +60,10 @@ export function HexInspectorDrawer({
     factionBadgeClass = 'bg-purple-50 text-purple-600 border-purple-200';
   }
 
-  // Format pace or calculate mock record pace
-  const recordPace = isCaptured ? '03:48 мин/км' : '—';
-  const decayHours = isCaptured ? '28ч 14м' : '—';
+  const topLeader = leaderboard.length > 0 ? leaderboard[0] : null;
+  const topLeaderDistance = topLeader?.total_distance_meters 
+    ? (topLeader.total_distance_meters >= 1000 ? `${(topLeader.total_distance_meters / 1000).toFixed(1)} км` : `${Math.round(topLeader.total_distance_meters)} м`)
+    : '—';
 
   return (
     <aside 
@@ -115,15 +120,15 @@ export function HexInspectorDrawer({
           <div className="pt-3 border-t border-slate-200/80 grid grid-cols-2 gap-3">
             <div className="flex flex-col">
               <span className="text-[10px] text-slate-500 flex items-center gap-1 font-medium">
-                <Crown size={12} className="text-amber-500" /> Рекорд темпа
+                <Crown size={12} className="text-amber-500" /> Рекорд сектора
               </span>
-              <span className="text-sm font-mono font-bold text-slate-900">{recordPace}</span>
+              <span className="text-sm font-mono font-bold text-slate-900">{topScore} pts</span>
             </div>
             <div className="flex flex-col">
               <span className="text-[10px] text-slate-500 flex items-center gap-1 font-medium">
-                <Timer size={12} className="text-blue-600" /> До сброса
+                <Footprints size={12} className="text-blue-600" /> Дистанция лидера
               </span>
-              <span className="text-sm font-mono font-bold text-slate-900">{decayHours}</span>
+              <span className="text-sm font-mono font-bold text-slate-900">{topLeaderDistance}</span>
             </div>
           </div>
         </div>
@@ -135,16 +140,18 @@ export function HexInspectorDrawer({
             <span className="text-xs font-mono font-bold text-slate-800">Res 9 (~174m)</span>
           </div>
           <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 flex flex-col">
-            <span className="text-[10px] text-slate-500">Стабильность</span>
-            <span className="text-xs font-mono font-bold text-emerald-600">92% Защита</span>
+            <span className="text-[10px] text-slate-500">Статус сектора</span>
+            <span className={`text-xs font-mono font-bold ${isCaptured ? 'text-emerald-600' : 'text-slate-500'}`}>
+              {isCaptured ? 'Захвачен' : 'Свободен'}
+            </span>
           </div>
         </div>
 
-        {/* Top 5 Zone Runners Leaderboard */}
+        {/* TOP-10 Zone Runners Leaderboard */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold font-heading text-slate-900 flex items-center gap-1.5">
-              <Trophy size={14} className="text-amber-500" /> ТОП БЕГУНОВ В СЕКТОРЕ
+              <Trophy size={14} className="text-amber-500" /> ЛИДЕРБОРД ТОП-10 В СЕКТОРЕ
             </span>
             <span className="text-[10px] font-mono font-bold text-slate-400">
               {leaderboard.length} АТЛЕТОВ
@@ -153,39 +160,59 @@ export function HexInspectorDrawer({
 
           <div className="flex flex-col gap-1.5">
             {leaderboard.length > 0 ? (
-              leaderboard.slice(0, 5).map((runner, idx) => (
-                <div 
-                  key={runner.user_id || idx}
-                  className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-white hover:border-blue-300 transition-colors shadow-xs"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-5 text-center font-mono font-bold text-xs text-slate-400">
-                      {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
-                    </span>
-                    <div 
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: runner.player_color_hex || '#2563eb' }}
-                    />
-                    <div className="flex flex-col">
-                      <span className="text-xs font-bold text-slate-900 truncate max-w-[120px]">
-                        {runner.username || `Атлет #${runner.user_id}`}
+              leaderboard.slice(0, 10).map((runner, idx) => {
+                const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+                const distanceKm = runner.total_distance_meters 
+                  ? (runner.total_distance_meters >= 1000 
+                      ? `${(runner.total_distance_meters / 1000).toFixed(1)} км` 
+                      : `${Math.round(runner.total_distance_meters)} м`)
+                  : null;
+
+                return (
+                  <div 
+                    key={runner.user_id || idx}
+                    onClick={() => onSelectRunner && onSelectRunner(runner.user_id)}
+                    className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-white hover:border-blue-300 hover:shadow-sm transition cursor-pointer group"
+                    title="Нажмите, чтобы открыть профиль атлета"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="w-5 text-center font-mono font-bold text-xs text-slate-500 shrink-0">
+                        {medal}
                       </span>
-                      <span className="text-[10px] text-slate-500 font-mono">
-                        {runner.club_name || 'URAM Team'}
-                      </span>
+                      <div 
+                        className="w-3 h-3 rounded-full shrink-0 shadow-xs"
+                        style={{ backgroundColor: runner.player_color_hex || '#2563eb' }}
+                      />
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-bold text-slate-900 truncate group-hover:text-blue-600 transition">
+                          {runner.username || `Атлет #${runner.user_id}`}
+                        </span>
+                        <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5">
+                          <span className="flex items-center gap-0.5">
+                            <Footprints size={10} className="text-slate-400" />
+                            {runner.visits_count || 1} виз.
+                          </span>
+                          {distanceKm && (
+                            <>
+                              <span>•</span>
+                              <span>{distanceKm}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex flex-col items-end font-mono">
+                        <span className="text-xs font-bold text-orange-600">
+                          {runner.uram_points || 0} pts
+                        </span>
+                      </div>
+                      <ChevronRight size={13} className="text-slate-300 group-hover:text-blue-500 transition" />
                     </div>
                   </div>
-
-                  <div className="flex flex-col items-end">
-                    <span className="text-xs font-mono font-bold text-blue-600">
-                      {runner.uram_points || 0} pts
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      {runner.best_pace || '04:12'}
-                    </span>
-                  </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="p-4 rounded-2xl border border-dashed border-slate-200 text-center flex flex-col items-center gap-1">
                 <Users size={20} className="text-slate-400" />
@@ -202,7 +229,7 @@ export function HexInspectorDrawer({
             <Shield size={13} className="text-blue-600" /> Правила контроля сектора
           </span>
           <p className="text-[11px] text-slate-500 leading-relaxed font-medium">
-            Для захвата гексагона пробегите маршрут внутри его границ со средним темпом быстрее текущего рекорда.
+            Для захвата гексагона пробегите маршрут внутри его границ и заработайте больше Uram Points, чем текущий лидер.
           </p>
         </div>
       </div>
@@ -221,3 +248,4 @@ export function HexInspectorDrawer({
 }
 
 export default HexInspectorDrawer;
+

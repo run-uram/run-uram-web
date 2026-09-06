@@ -176,3 +176,49 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Hexagon Realtime Capture Pulse & Flash Animations */
+@keyframes hex-capture-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  60% {
+    transform: scale(2.8);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(4.2);
+    opacity: 0;
+  }
+}
+
+.hex-pulse-beacon {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+}
+
+.hex-pulse-beacon .pulse-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid var(--pulse-color, #fe4a09);
+  animation: hex-capture-pulse 2.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  box-shadow: 0 0 16px var(--pulse-color, #fe4a09);
+}
+
+.hex-pulse-beacon .core-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: var(--pulse-color, #fe4a09);
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 12px var(--pulse-color, #fe4a09);
+}
+

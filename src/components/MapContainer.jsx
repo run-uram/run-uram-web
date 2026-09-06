@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import maplibregl from 'maplibre-gl';
 import { Layers, Eye, Compass, Shield, Maximize2, Navigation, X, CheckCircle2 } from 'lucide-react';
-import { KAZAN_CENTER, KAZAN_BOUNDS, MAP_STYLES, FACTIONS } from '../services/mockData.js';
-import { h3ToPolygonCoordinates, getViewportH3Cells, DEFAULT_H3_RESOLUTION } from '../services/h3Utils.js';
+import { KAZAN_CENTER, KAZAN_BOUNDS, MAP_STYLES } from '../services/mockData.js';
+import { h3ToPolygonCoordinates, getViewportH3Cells, getH3Center, DEFAULT_H3_RESOLUTION } from '../services/h3Utils.js';
 
 export function MapContainer({
   capturedHexagonsMap, // Map<string, HexagonData>
@@ -12,7 +12,8 @@ export function MapContainer({
   mapStyle = 'voyager',
   onViewportChange,
   activeRunRoute = null, // Run details with route_points & captured_h3_indices
-  onClearActiveRunRoute
+  onClearActiveRunRoute,
+  latestCapture = null // { h3Index, color, timestamp }
 }) {
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -22,7 +23,6 @@ export function MapContainer({
 
   const [mapLoaded, setMapLoaded] = useState(false);
   const [viewportCells, setViewportCells] = useState([]);
-  const [showLegend, setShowLegend] = useState(true);
   const [pitch3d, setPitch3d] = useState(true);
 
   const onViewportChangeRef = useRef(onViewportChange);
@@ -428,6 +428,31 @@ export function MapContainer({
     }
   }, [mapLoaded, runRouteGeoJson, activeRunRoute]);
 
+  // Render Realtime Pulse/Flash animation when a hexagon is captured via Pub/Sub
+  useEffect(() => {
+    if (!mapLoaded || !mapInstanceRef.current || !latestCapture || !latestCapture.h3Index) return;
+    const center = getH3Center(latestCapture.h3Index);
+    if (!center) return;
+
+    const el = document.createElement('div');
+    el.className = 'hex-pulse-beacon';
+    el.style.setProperty('--pulse-color', latestCapture.color || '#fe4a09');
+    el.innerHTML = '<div class="pulse-ring"></div><div class="core-dot"></div>';
+
+    const marker = new maplibregl.Marker({ element: el })
+      .setLngLat([center.lng, center.lat])
+      .addTo(mapInstanceRef.current);
+
+    const timer = setTimeout(() => {
+      marker.remove();
+    }, 5500);
+
+    return () => {
+      clearTimeout(timer);
+      marker.remove();
+    };
+  }, [mapLoaded, latestCapture]);
+
   const togglePitch = () => {
     if (!mapInstanceRef.current) return;
     const nextPitch = !pitch3d;
@@ -485,35 +510,6 @@ export function MapContainer({
             <X size={13} />
             <span>Сбросить</span>
           </button>
-        </div>
-      )}
-
-      {/* Floating Faction Territory Legend */}
-      {showLegend && (
-        <div className="absolute bottom-6 left-4 z-20 p-3.5 rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-xl flex flex-col gap-2.5 shadow-xl shadow-slate-900/5 max-w-xs select-none">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-              <Shield size={13} className="text-blue-600" /> ФРАКЦИОННЫЙ КОНТРОЛЬ
-            </span>
-            <button 
-              onClick={() => setShowLegend(false)}
-              className="text-[11px] text-slate-400 hover:text-slate-700 cursor-pointer"
-            >
-              ✕
-            </button>
-          </div>
-
-          <div className="grid grid-cols-2 gap-1.5 text-xs font-mono">
-            {FACTIONS.map((f) => (
-              <div key={f.id} className="flex items-center gap-2 p-1.5 rounded-xl bg-slate-50 border border-slate-200/80">
-                <span className="text-sm">{f.icon}</span>
-                <div className="flex flex-col">
-                  <span className="text-[11px] font-bold text-slate-800 truncate">{f.shortName}</span>
-                  <span className="text-[10px] font-bold" style={{ color: f.color }}>{f.percent}%</span>
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       )}
     </div>
