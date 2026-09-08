@@ -9,7 +9,7 @@ export function MapContainer({
   selectedH3Index,
   onHexagonSelect,
   centerPosition,
-  mapStyle = 'voyager',
+  mapStyle = 'osm',
   onViewportChange,
   activeRunRoute = null, // Run details with route_points & captured_h3_indices
   onClearActiveRunRoute,
@@ -87,10 +87,10 @@ export function MapContainer({
         const isRunHex = activeRunHexSet.has(h3Idx);
         const owner = capturedInfo?.owner;
 
-        // Default or faction color
+        // Default or faction/athlete color
         let hexColor = isRunHex 
           ? '#2563eb' 
-          : (isCaptured ? (owner?.color || capturedInfo?.color || '#fe4a09') : 'rgba(37,99,235,0.06)');
+          : (isCaptured ? (owner?.color || capturedInfo?.color || '#fe4a09') : 'rgba(37, 99, 235, 0.08)');
 
         return {
           type: 'Feature',
@@ -112,6 +112,11 @@ export function MapContainer({
       })
       .filter(Boolean);
   }, [viewportCells, capturedHexagonsMap, selectedH3Index, activeRunHexSet]);
+
+  const featuresRef = useRef(features);
+  useEffect(() => {
+    featuresRef.current = features;
+  }, [features]);
 
   // GeoJSON LineString for active run route GPS points
   const runRouteGeoJson = useMemo(() => {
@@ -142,19 +147,28 @@ export function MapContainer({
     };
   }, [activeRunRoute]);
 
+  const runRouteGeoJsonRef = useRef(runRouteGeoJson);
+  useEffect(() => {
+    runRouteGeoJsonRef.current = runRouteGeoJson;
+  }, [runRouteGeoJson]);
+
   // Setup MapLibre vector layers
   const setupLayers = useCallback((map) => {
     if (!map) return;
 
     // 1. H3 Hexagons Source & Layers
+    const currentHexData = {
+      type: 'FeatureCollection',
+      features: featuresRef.current || []
+    };
+
     if (!map.getSource('h3-hexagons-source')) {
       map.addSource('h3-hexagons-source', {
         type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: []
-        }
+        data: currentHexData
       });
+    } else {
+      map.getSource('h3-hexagons-source').setData(currentHexData);
     }
 
     if (!map.getLayer('h3-hexagons-fill')) {
@@ -166,8 +180,8 @@ export function MapContainer({
           'fill-color': ['get', 'color'],
           'fill-opacity': [
             'case',
-            ['boolean', ['get', 'isSelected'], false], 0.80,
-            ['boolean', ['get', 'isRunHex'], false], 0.65,
+            ['boolean', ['get', 'isSelected'], false], 0.75,
+            ['boolean', ['get', 'isRunHex'], false], 0.60,
             ['boolean', ['get', 'isCaptured'], false], 0.45,
             0.08
           ]
@@ -186,14 +200,14 @@ export function MapContainer({
             ['boolean', ['get', 'isSelected'], false], '#2563eb',
             ['boolean', ['get', 'isRunHex'], false], '#1d4ed8',
             ['boolean', ['get', 'isCaptured'], false], ['get', 'color'],
-            'rgba(37, 99, 235, 0.25)'
+            'rgba(37, 99, 235, 0.40)'
           ],
           'line-width': [
             'case',
             ['boolean', ['get', 'isSelected'], false], 3.5,
             ['boolean', ['get', 'isRunHex'], false], 3.0,
-            ['boolean', ['get', 'isCaptured'], false], 2.2,
-            1.0
+            ['boolean', ['get', 'isCaptured'], false], 2.4,
+            1.4
           ],
           'line-opacity': 0.95
         }
@@ -201,14 +215,18 @@ export function MapContainer({
     }
 
     // 2. Active Run GPS Route Line Source & Layers
+    const currentRouteData = runRouteGeoJsonRef.current || {
+      type: 'FeatureCollection',
+      features: []
+    };
+
     if (!map.getSource('run-route-source')) {
       map.addSource('run-route-source', {
         type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: []
-        }
+        data: currentRouteData
       });
+    } else {
+      map.getSource('run-route-source').setData(currentRouteData);
     }
 
     // Casing/Glow layer under route
@@ -224,7 +242,7 @@ export function MapContainer({
         paint: {
           'line-color': '#ffffff',
           'line-width': 8.0,
-          'line-opacity': 0.85
+          'line-opacity': 0.9
         }
       });
     }
@@ -248,11 +266,11 @@ export function MapContainer({
     }
   }, []);
 
-  // Initialize MapLibre GL Map
+  // Initialize MapLibre GL Map with OSM Detailed tiles
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
-    const initialStyle = MAP_STYLES.voyager;
+    const initialStyle = MAP_STYLES.osm;
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
@@ -272,6 +290,7 @@ export function MapContainer({
     const handleStyleLoad = () => {
       setupLayers(map);
       setMapLoaded(true);
+      updateViewportAndHexes(map);
     };
 
     map.on('style.load', handleStyleLoad);
@@ -298,15 +317,16 @@ export function MapContainer({
         map.getCanvas().style.cursor = 'pointer';
         const feature = e.features[0];
         const props = feature.properties;
+        const isCap = props.isCaptured === true || props.isCaptured === 'true';
 
-        const ownerHTML = props.isCaptured
+        const ownerHTML = isCap
           ? `<div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
                <div style="width:22px; height:22px; border-radius:6px; background:${props.color}; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:900; font-size:11px; box-shadow:0 2px 5px rgba(0,0,0,0.15);">
                  ${props.ownerName ? props.ownerName[0].toUpperCase() : 'R'}
                </div>
                <div>
-                 <div style="font-weight:700; font-size:12px; color:#0f172a;">${props.ownerName}</div>
-                 <div style="font-size:10px; color:${props.color}; font-family:'JetBrains Mono', monospace; font-weight:700;">${props.clubName}</div>
+                 <div style="font-weight:700; font-size:12px; color:#0f172a;">${props.ownerName || 'Бегун'}</div>
+                 <div style="font-size:10px; color:${props.color}; font-family:'JetBrains Mono', monospace; font-weight:700;">${props.clubName || 'URAM Team'}</div>
                </div>
              </div>`
           : `<div style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:11px; color:#64748b;">
@@ -369,13 +389,16 @@ export function MapContainer({
     if (!mapLoaded || !mapInstanceRef.current) return;
     const map = mapInstanceRef.current;
     const source = map.getSource('h3-hexagons-source');
-    if (!source) return;
+    if (!source) {
+      setupLayers(map);
+      return;
+    }
 
     source.setData({
       type: 'FeatureCollection',
       features: features
     });
-  }, [mapLoaded, features]);
+  }, [mapLoaded, features, setupLayers]);
 
   // Sync Active Run Route & Fit Bounds
   useEffect(() => {

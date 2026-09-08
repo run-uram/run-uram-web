@@ -40,6 +40,28 @@ function getRunnerColor(userId, providedColor) {
   return RUNNER_PALETTE[index];
 }
 
+function loadCachedRunners() {
+  try {
+    const raw = localStorage.getItem('runuram_runners_cache');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return new Map(Object.entries(parsed));
+    }
+  } catch (e) {
+    console.warn('Failed to read runners cache:', e);
+  }
+  return new Map();
+}
+
+function saveCachedRunners(runnersMap) {
+  try {
+    const obj = Object.fromEntries(runnersMap);
+    localStorage.setItem('runuram_runners_cache', JSON.stringify(obj));
+  } catch (e) {
+    // Ignore storage errors
+  }
+}
+
 export function App() {
   const [authenticated, setAuthenticated] = useState(isAuthenticated());
   const [userProfile, setUserProfile] = useState(null);
@@ -51,7 +73,7 @@ export function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Cache of known runner profiles: userId -> { username, color }
-  const knownRunnersRef = useRef(new Map());
+  const knownRunnersRef = useRef(loadCachedRunners());
   // Cache of requested hexagon details to prevent duplicate queries
   const requestedHexDetailsRef = useRef(new Set());
 
@@ -138,10 +160,12 @@ export function App() {
         });
 
         if (profile.user_id && profile.username) {
+          const color = profile.player_color_hex || getRunnerColor(profile.user_id);
           knownRunnersRef.current.set(String(profile.user_id), {
             username: profile.username,
-            color: profile.player_color_hex || getRunnerColor(profile.user_id)
+            color: color
           });
+          saveCachedRunners(knownRunnersRef.current);
         }
       }
     });
@@ -169,79 +193,78 @@ export function App() {
     // 5. Viewport Protobuf response (2.1)
     const unsubViewport = wsService.on('subscribe_viewport_response', (resp) => {
       if (resp && resp.hexagons) {
-        if (resp.hexagons.length === 0) return;
-
-        const hexesToPrefetch = [];
+        const unknownHexesToResolve = [];
 
         setCapturedHexagonsMap((prevMap) => {
-          let hasChanges = false;
           const newMap = new Map(prevMap);
 
           resp.hexagons.forEach((hex) => {
             const hexStr = h3Uint64ToHexString(hex.h3_index);
-            const isCaptured = Boolean(hex.owner_username || (hex.owner_user_id && hex.owner_user_id !== '0'));
-            const existing = newMap.get(hexStr);
             const rawOwner = hex.owner_username?.trim();
             const userIdStr = hex.owner_user_id ? String(hex.owner_user_id) : null;
+            const topScore = hex.top_score || 0;
 
-            const cachedRunner = userIdStr ? knownRunnersRef.current.get(userIdStr) : null;
-            const existingName = existing?.owner?.name;
-            const hasExistingExplicitName = existingName && existingName !== 'Бегун' && existingName !== 'Атлет' && !existingName.startsWith('Атлет #');
-            const hasNewExplicitName = rawOwner && rawOwner !== 'Бегун' && rawOwner !== 'Атлет';
+            const isCaptured = Boolean(
+              (rawOwner && rawOwner !== '' && rawOwner !== 'Бегун') ||
+              (userIdStr && userIdStr !== '0') ||
+              topScore > 0
+            );
 
-            const ownerName = hasNewExplicitName
-              ? rawOwner
-              : (cachedRunner?.username || (hasExistingExplicitName ? existingName : (rawOwner || (isCaptured ? (userIdStr && userIdStr !== '0' ? `Атлет #${userIdStr}` : 'Бегун') : null))));
+            if (isCaptured) {
+              const cachedRunner = userIdStr ? knownRunnersRef.current.get(userIdStr) : null;
+              const hasExplicitName = rawOwner && rawOwner !== '' && rawOwner !== 'Бегун' && rawOwner !== 'Атлет';
+              const hasExplicitColor = hex.owner_color_hex && hex.owner_color_hex.startsWith('#') && hex.owner_color_hex.length >= 4 && hex.owner_color_hex !== '#000000';
 
-            const ownerColor = (hex.owner_color_hex && hex.owner_color_hex.startsWith('#') && hex.owner_color_hex !== '#000000')
-              ? hex.owner_color_hex
-              : (cachedRunner?.color || existing?.owner?.color || getRunnerColor(userIdStr, hex.owner_color_hex));
+              const ownerName = hasExplicitName
+                ? rawOwner
+                : (cachedRunner?.username || (userIdStr && userIdStr !== '0' ? `Атлет #${userIdStr}` : 'Бегун'));
 
-            const topScore = hex.top_score || existing?.score || 0;
+              const ownerColor = hasExplicitColor
+                ? hex.owner_color_hex
+                : (cachedRunner?.color || getRunnerColor(userIdStr, hex.owner_color_hex));
 
-            if (userIdStr && hasNewExplicitName) {
-              knownRunnersRef.current.set(userIdStr, {
-                username: rawOwner,
-                color: ownerColor
-              });
-            }
-
-            const hexData = {
-              h3_index: hexStr,
-              is_captured: isCaptured,
-              score: topScore,
-              top_score: topScore,
-              owner: isCaptured ? {
-                id: hex.owner_user_id || existing?.owner?.id,
-                name: ownerName,
-                color: ownerColor,
-                club_name: existing?.owner?.club_name || 'URAM Team'
-              } : null
-            };
-
-            if (isCaptured && (!hasNewExplicitName && !hasExistingExplicitName && !cachedRunner)) {
-              if (!requestedHexDetailsRef.current.has(hexStr)) {
-                hexesToPrefetch.push(hexStr);
+              if (userIdStr && hasExplicitName) {
+                knownRunnersRef.current.set(userIdStr, {
+                  username: rawOwner,
+                  color: ownerColor
+                });
+                saveCachedRunners(knownRunnersRef.current);
               }
-            }
 
-            if (!existing || existing.score !== hexData.score || existing.is_captured !== hexData.is_captured || existing.owner?.name !== hexData.owner?.name || existing.owner?.color !== hexData.owner?.color) {
-              newMap.set(hexStr, hexData);
-              hasChanges = true;
+              // Collect up to 3 unknown runners to resolve in background
+              if (userIdStr && !cachedRunner && !hasExplicitName && !requestedHexDetailsRef.current.has(hexStr)) {
+                requestedHexDetailsRef.current.add(hexStr);
+                unknownHexesToResolve.push(hexStr);
+              }
+
+              newMap.set(hexStr, {
+                h3_index: hexStr,
+                is_captured: true,
+                score: topScore,
+                top_score: topScore,
+                owner: {
+                  id: userIdStr,
+                  name: ownerName,
+                  color: ownerColor,
+                  club_name: 'URAM Team'
+                }
+              });
+            } else {
+              newMap.delete(hexStr);
             }
           });
 
-          return hasChanges ? newMap : prevMap;
+          return newMap;
         });
 
-        if (hexesToPrefetch.length > 0 && wsService.status === 'connected') {
-          hexesToPrefetch.slice(0, 8).forEach((h3Idx, idx) => {
-            requestedHexDetailsRef.current.add(h3Idx);
+        // Resolve unknown runners in background smoothly
+        if (unknownHexesToResolve.length > 0 && wsService.status === 'connected') {
+          unknownHexesToResolve.slice(0, 3).forEach((h3Idx, idx) => {
             setTimeout(() => {
               if (wsService.status === 'connected') {
                 wsService.requestHexagonDetails(h3Idx);
               }
-            }, idx * 60);
+            }, (idx + 1) * 200);
           });
         }
       }
@@ -256,37 +279,64 @@ export function App() {
           const hexStr = h3Uint64ToHexString(details.state.h3_index);
           const topLeader = details.leaderboard && details.leaderboard.length > 0 ? details.leaderboard[0] : null;
           const rawOwnerName = details.state.owner_username?.trim();
-          const hasExplicitOwner = rawOwnerName && rawOwnerName !== 'Атлет' && rawOwnerName !== 'Бегун';
-
-          const resolvedOwner = hasExplicitOwner ? rawOwnerName : (topLeader?.username || rawOwnerName || null);
-          const isCaptured = Boolean(resolvedOwner || (details.state.owner_user_id && details.state.owner_user_id !== '0') || topLeader);
-          const finalOwnerName = resolvedOwner || (isCaptured ? (topLeader?.username || 'Бегун') : null);
+          const topScore = details.state.top_score || topLeader?.uram_points || 0;
           const rawOwnerId = details.state.owner_user_id || topLeader?.user_id;
-          const finalOwnerColor = details.state.owner_color_hex || topLeader?.player_color_hex || getRunnerColor(rawOwnerId, details.state.owner_color_hex);
-          const finalScore = details.state.top_score || topLeader?.uram_points || 0;
+          const userIdStr = rawOwnerId ? String(rawOwnerId) : null;
 
-          if (rawOwnerId && finalOwnerName && finalOwnerName !== 'Бегун') {
-            knownRunnersRef.current.set(String(rawOwnerId), {
-              username: finalOwnerName,
-              color: finalOwnerColor
-            });
-          }
+          const isCaptured = Boolean(
+            (rawOwnerName && rawOwnerName !== '') ||
+            (rawOwnerId && String(rawOwnerId) !== '0') ||
+            topScore > 0 ||
+            topLeader
+          );
 
           if (isCaptured) {
+            const finalOwnerName = (rawOwnerName && rawOwnerName !== '' && rawOwnerName !== 'Бегун')
+              ? rawOwnerName
+              : (topLeader?.username || (userIdStr ? `Атлет #${userIdStr}` : 'Бегун'));
+
+            const finalOwnerColor = (details.state.owner_color_hex && details.state.owner_color_hex.startsWith('#') && details.state.owner_color_hex !== '#000000')
+              ? details.state.owner_color_hex
+              : (topLeader?.player_color_hex || getRunnerColor(rawOwnerId));
+
+            if (userIdStr && finalOwnerName && finalOwnerName !== 'Бегун') {
+              knownRunnersRef.current.set(userIdStr, {
+                username: finalOwnerName,
+                color: finalOwnerColor
+              });
+              saveCachedRunners(knownRunnersRef.current);
+            }
+
             setCapturedHexagonsMap((prevMap) => {
               const newMap = new Map(prevMap);
               newMap.set(hexStr, {
                 h3_index: hexStr,
                 is_captured: true,
-                score: finalScore,
-                top_score: finalScore,
+                score: topScore,
+                top_score: topScore,
                 owner: {
-                  id: rawOwnerId,
+                  id: userIdStr,
                   name: finalOwnerName,
                   color: finalOwnerColor,
                   club_name: 'URAM Team'
                 }
               });
+
+              // Propagate real runner name and color to ALL their sectors on the map
+              if (userIdStr) {
+                for (const [k, v] of newMap.entries()) {
+                  if (v.owner?.id === userIdStr && (v.owner?.color !== finalOwnerColor || v.owner?.name !== finalOwnerName)) {
+                    newMap.set(k, {
+                      ...v,
+                      owner: {
+                        ...v.owner,
+                        name: finalOwnerName,
+                        color: finalOwnerColor
+                      }
+                    });
+                  }
+                }
+              }
 
               return newMap;
             });

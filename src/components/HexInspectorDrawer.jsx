@@ -31,11 +31,17 @@ export function HexInspectorDrawer({
   const isLoaded = Boolean(detailsData);
   const state = detailsData?.state;
   const leaderboard = detailsData?.leaderboard || [];
+  const topLeader = leaderboard.length > 0 ? leaderboard[0] : null;
 
-  const rawOwner = state?.owner_username || 'Не захвачен';
-  const isCaptured = Boolean(state?.owner_username || (state?.owner_user_id && state?.owner_user_id !== '0') || leaderboard.length > 0);
-  const ownerColor = state?.owner_color_hex || (isCaptured ? '#fe4a09' : '#94a3b8');
-  const topScore = state?.top_score || (leaderboard.length > 0 ? leaderboard[0].uram_points : 0);
+  // Resolve true owner from state or leaderboard
+  const rawOwnerName = state?.owner_username?.trim();
+  const ownerName = (rawOwnerName && rawOwnerName !== '' && rawOwnerName !== 'Бегун')
+    ? rawOwnerName
+    : (topLeader?.username || (state?.owner_user_id && String(state.owner_user_id) !== '0' ? `Атлет #${state.owner_user_id}` : null));
+
+  const topScore = state?.top_score || (topLeader ? topLeader.uram_points : 0);
+  const isCaptured = Boolean(ownerName || (state?.owner_user_id && String(state.owner_user_id) !== '0') || topScore > 0);
+  const ownerColor = state?.owner_color_hex || topLeader?.player_color_hex || (isCaptured ? '#fe4a09' : '#94a3b8');
 
   // Determine faction styling based on color or name
   let factionName = 'Нейтральная зона';
@@ -60,7 +66,6 @@ export function HexInspectorDrawer({
     factionBadgeClass = 'bg-purple-50 text-purple-600 border-purple-200';
   }
 
-  const topLeader = leaderboard.length > 0 ? leaderboard[0] : null;
   const topLeaderDistance = topLeader?.total_distance_meters 
     ? (topLeader.total_distance_meters >= 1000 ? `${(topLeader.total_distance_meters / 1000).toFixed(1)} км` : `${Math.round(topLeader.total_distance_meters)} м`)
     : '—';
@@ -105,7 +110,7 @@ export function HexInspectorDrawer({
               <div className="flex flex-col">
                 <span className="text-xs font-bold text-slate-900">{factionName}</span>
                 <span className="text-[11px] text-slate-500 font-medium">
-                  {isCaptured ? `Владелец: ${rawOwner}` : 'Нейтральная территория'}
+                  {isCaptured ? `Владелец: ${ownerName || 'Бегун'}` : 'Нейтральная территория'}
                 </span>
               </div>
             </div>

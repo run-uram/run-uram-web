@@ -13,7 +13,33 @@ export const KAZAN_BOUNDS = [
   [49.40, 55.98]  // NE: Derbyshki / M7 North-East
 ];
 
+export const OSM_STYLE_OBJECT = {
+  version: 8,
+  name: 'OpenStreetMap Standard',
+  sources: {
+    'osm-tiles': {
+      type: 'raster',
+      tiles: [
+        'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+      ],
+      tileSize: 256,
+      attribution: '&copy; OpenStreetMap contributors',
+      maxzoom: 19
+    }
+  },
+  layers: [
+    {
+      id: 'osm-tiles-layer',
+      type: 'raster',
+      source: 'osm-tiles',
+      minzoom: 0,
+      maxzoom: 19
+    }
+  ]
+};
+
 export const MAP_STYLES = {
+  osm: OSM_STYLE_OBJECT,
   voyager: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
   positron: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
   dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json'

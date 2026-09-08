@@ -2,6 +2,7 @@
  * WebSocket Management Service for Protobuf Communication
  */
 
+import protobuf from 'protobufjs';
 import { encodeEnvelope, decodeEnvelope, hexStringToH3Uint64 } from './protoService.js';
 import { getWsBaseUrl, getStoredWsTicket, refreshWsTicket, isAuthenticated } from './authService.js';
 
@@ -243,9 +244,17 @@ class WebSocketService {
    * Request own or other runner's profile (user_id: 0 = self)
    */
   requestUserProfile(userId = 0) {
+    let uintId = 0;
+    if (typeof userId === 'string' || typeof userId === 'number' || typeof userId === 'bigint') {
+      const num = Number(userId);
+      uintId = isNaN(num) ? 0 : num;
+    }
+    if (protobuf.util.Long) {
+      uintId = protobuf.util.Long.fromValue(uintId, true);
+    }
     return this.sendEnvelope({
       get_user_profile_request: {
-        user_id: userId
+        user_id: uintId
       }
     });
   }
@@ -254,9 +263,17 @@ class WebSocketService {
    * Request user run history list with pagination
    */
   requestUserRuns(userId = 0, limit = 20, offset = 0) {
+    let uintId = 0;
+    if (typeof userId === 'string' || typeof userId === 'number' || typeof userId === 'bigint') {
+      const num = Number(userId);
+      uintId = isNaN(num) ? 0 : num;
+    }
+    if (protobuf.util.Long) {
+      uintId = protobuf.util.Long.fromValue(uintId, true);
+    }
     return this.sendEnvelope({
       get_user_runs_request: {
-        user_id: userId,
+        user_id: uintId,
         limit: limit,
         offset: offset
       }
@@ -267,9 +284,17 @@ class WebSocketService {
    * Request detailed run telemetry and GPS route points for map rendering
    */
   requestRunDetails(runId) {
+    let uintRunId = 0;
+    if (typeof runId === 'string' || typeof runId === 'number' || typeof runId === 'bigint') {
+      const num = Number(runId);
+      uintRunId = isNaN(num) ? 0 : num;
+    }
+    if (protobuf.util.Long) {
+      uintRunId = protobuf.util.Long.fromValue(uintRunId, true);
+    }
     return this.sendEnvelope({
       get_run_details_request: {
-        run_id: runId
+        run_id: uintRunId
       }
     });
   }
